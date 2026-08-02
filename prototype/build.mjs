@@ -10,10 +10,12 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+export function build() {
 const read = f => readFileSync(join(here, f), 'utf8');
 
 const coreSrc = read('zephyr-core.js');
@@ -60,4 +62,11 @@ mkdirSync(join(here, 'dist'), { recursive: true });
 writeFileSync(join(here, 'dist', 'bundle.js'), bundle);
 writeFileSync(join(here, 'dist', 'zephyr.html'), html);
 
-console.log(`✓ built dist/zephyr.html — ${(html.length / 1024).toFixed(1)} kB, ${exportNames.length} core exports inlined`);
+return { html, bytes: html.length, exports: exportNames.length };
+}
+
+// Only report when run directly; the dev server imports this and prints its own line.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const { bytes, exports } = build();
+  console.log(`✓ built dist/zephyr.html — ${(bytes / 1024).toFixed(1)} kB, ${exports} core exports inlined`);
+}

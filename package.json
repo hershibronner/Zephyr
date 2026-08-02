@@ -1,0 +1,16 @@
+{
+  "name": "zephyr-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Development server for the Zephyr web prototype. The app itself is built with Gradle.",
+  "scripts": {
+    "start": "node prototype/serve.mjs",
+    "dev": "node prototype/serve.mjs",
+    "build": "node prototype/build.mjs",
+    "test": "node prototype/parity.test.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -15,3 +15,6 @@ keystore.properties
 
 # Kotlin compiler daemon working directory
 .kotlin/
+
+# Node (the prototype dev server has no dependencies, but just in case)
+node_modules/

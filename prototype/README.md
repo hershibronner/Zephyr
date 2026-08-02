@@ -3,10 +3,35 @@
 A working Zephyr that runs in a browser, so the app can be *used* — and judged — before its design
 is committed to Compose and shipped in an APK.
 
+## Run it
+
 ```bash
-node prototype/build.mjs        # bundle -> dist/zephyr.html (self-contained, open it directly)
-node prototype/parity.test.mjs  # prove the prototype agrees with the Android app
-gradle -p core test             # run the Kotlin suite; also regenerates parity-fixtures.json
+npm start
+```
+
+That's the whole setup. No `npm install`, no dependencies, no lockfile — Node's own libraries are
+enough, and a dev server isn't worth an install step in a repo whose real build is Gradle.
+
+```
+  local    http://localhost:5173
+  network  http://192.168.1.42:5173   ← open this on your phone
+```
+
+The server prints a LAN address as well as localhost. Open that one on your phone while it's on the
+same Wi-Fi: a fitness app tested only on a desktop tells you about half of what you need to know.
+
+Editing `zephyr-core.js`, `app.js` or `styles.css` rebuilds and reloads every open tab, phone
+included. `PORT=8080 npm start` if 5173 is taken.
+
+Your data lives in that browser's local storage, so it persists across restarts and each device
+keeps its own. Settings → *Erase everything and start over* clears it.
+
+## Other commands
+
+```bash
+npm run build   # bundle -> dist/zephyr.html, a single self-contained file you can open directly
+npm test        # prove the prototype agrees with the Android app
+gradle -p core test   # the Kotlin suite; also regenerates parity-fixtures.json
 ```
 
 ## Why it isn't just a mockup
@@ -52,6 +77,7 @@ is the real logic.
 | `zephyr-core.js` | the domain logic, parity-tested against Kotlin |
 | `app.js` | screens, state, interaction |
 | `styles.css` | the app's real design tokens |
+| `serve.mjs` | dev server: rebuild on save, reload every open tab |
 | `build.mjs` | flattens the modules into one self-contained page |
 | `parity.test.mjs` | replays the Kotlin fixtures through the JavaScript |
 | `parity-fixtures.json` | generated — do not hand-edit |
