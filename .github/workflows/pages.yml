@@ -43,7 +43,11 @@ jobs:
           mkdir -p _site
           cp prototype/dist/zephyr.html _site/index.html
 
+      # enablement turns Pages on for the repository if it isn't already, so no one has to go
+      # find a settings toggle before the first deploy can work.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
