@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Open ring: the daily energy ring the whole app is built around. -->
+    <path
+        android:pathData="M54,28 A26,26 0 1,1 35.6,35.6"
+        android:strokeWidth="7"
+        android:strokeColor="#00E5A0"
+        android:strokeLineCap="round" />
+    <!-- Z, drawn as a stride. -->
+    <path
+        android:pathData="M45,45 L63,45 L45,63 L63,63"
+        android:strokeWidth="6"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

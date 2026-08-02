@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zephyr</string>
+    <string name="tracking_channel_name">Session tracking</string>
+    <string name="tracking_notification_title">Zephyr is tracking</string>
+</resources>
