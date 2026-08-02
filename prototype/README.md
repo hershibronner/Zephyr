@@ -15,6 +15,21 @@ Or, from anywhere, without cloning — download the repo as a ZIP, then in Termi
 cd ~/Downloads/Zephyr-*/ && node prototype/serve.mjs   # trailing slash: folders only
 ```
 
+### Getting updates without Node or git
+
+The built app is committed, so a plain ZIP download is enough to run the latest version. On macOS
+this uses only tools that ship with the system:
+
+```bash
+cd ~/Downloads \
+  && curl -L -o zephyr.zip "https://github.com/hershibronner/Zephyr/archive/refs/heads/claude/fitness-goals-android-app-mn0jn9.zip" \
+  && unzip -o -q zephyr.zip \
+  && open "Zephyr-claude-fitness-goals-android-app-mn0jn9/prototype/dist/zephyr.html"
+```
+
+It overwrites in place, so the file path — and therefore the browser storage holding your logged
+data — stays the same across updates.
+
 ### If macOS blocks the launcher
 
 `Start Zephyr (Mac).command` is convenient but downloaded scripts are quarantined, and macOS 15
