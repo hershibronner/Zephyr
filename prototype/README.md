@@ -12,7 +12,7 @@ npm start
 Or, from anywhere, without cloning — download the repo as a ZIP, then in Terminal:
 
 ```bash
-cd ~/Downloads/Zephyr-* && node prototype/serve.mjs
+cd ~/Downloads/Zephyr-*/ && node prototype/serve.mjs   # trailing slash: folders only
 ```
 
 ### If macOS blocks the launcher
