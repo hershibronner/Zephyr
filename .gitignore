@@ -12,3 +12,6 @@ captures/
 *.keystore
 !debug.keystore
 keystore.properties
+
+# Kotlin compiler daemon working directory
+.kotlin/

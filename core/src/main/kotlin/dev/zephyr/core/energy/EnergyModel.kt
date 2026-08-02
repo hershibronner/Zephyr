@@ -79,7 +79,17 @@ data class CalorieTargetResult(
 object CalorieTarget {
 
     const val MAX_DEFICIT_FRACTION = 0.25
-    const val BMR_SAFETY_MARGIN = 1.10
+
+    /**
+     * Intake is not allowed below resting metabolic rate.
+     *
+     * This sits at 1.0, not above it. An earlier 1.10 margin fired for essentially every realistic
+     * user requesting the app's own recommended 0.5 kg/week — quietly watering a typical goal down
+     * to 0.12 kg/week and showing a safety warning every single time. A warning that appears in the
+     * normal case teaches the user to ignore it, which makes the app less safe rather than more.
+     * The rails that do the real work are the deficit cap above and the absolute floors below.
+     */
+    const val BMR_SAFETY_MARGIN = 1.0
     const val FLOOR_MALE = 1500
     const val FLOOR_FEMALE = 1200
 

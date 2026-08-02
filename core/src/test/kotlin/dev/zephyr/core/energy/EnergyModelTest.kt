@@ -121,11 +121,11 @@ class CalorieTargetTest {
 
     @Test
     fun `prescribes maintenance when no safe deficit exists`() {
-        // Resting rate almost equal to maintenance: every safe target is above maintenance, so the
-        // only honest answer is maintenance itself and a near-zero effective rate.
+        // Resting rate at or above maintenance: every safe target is above maintenance, so the only
+        // honest answer is maintenance itself and a near-zero effective rate.
         val result = CalorieTarget.calculate(
             maintenanceKcal = 2000.0,
-            bmrKcal = 1900.0,
+            bmrKcal = 2050.0,
             kgPerWeek = -1.0,
             sex = Sex.MALE,
         )
@@ -133,6 +133,32 @@ class CalorieTargetTest {
         assertEquals(0, result.dailyDeltaKcal)
         assertEquals(TargetAdjustment.RAISED_ABOVE_BMR, result.adjustment)
         assertTrue(abs(result.effectiveKgPerWeek) < 0.01)
+    }
+
+    @Test
+    fun `a typical user gets close to the pace they actually asked for`() {
+        // The rails exist for extremes. If they fire on an ordinary 85kg man wanting 0.5 kg/week,
+        // the app is overriding its own recommendation and its warnings become background noise.
+        val result = CalorieTarget.forProfile(
+            profile(sex = Sex.MALE, weight = 85.0, pace = GoalPace.LOSE_STEADY),
+            today,
+        )
+        assertTrue(
+            abs(result.effectiveKgPerWeek) > 0.45,
+            "watered a standard 0.5 kg/week goal down to ${result.effectiveKgPerWeek}",
+        )
+    }
+
+    @Test
+    fun `still refuses a pace a small sedentary person cannot safely reach by diet alone`() {
+        val result = CalorieTarget.calculate(
+            maintenanceKcal = 1559.0,
+            bmrKcal = 1299.0,
+            kgPerWeek = -0.5,
+            sex = Sex.FEMALE,
+        )
+        assertTrue(result.targetKcal >= 1299, "prescribed below resting metabolic rate")
+        assertTrue(abs(result.effectiveKgPerWeek) < 0.5, "should ease a goal that needs activity")
     }
 
     @Test
