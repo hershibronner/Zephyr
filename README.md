@@ -1,0 +1,77 @@
+# Zephyr
+
+An Android fitness app built around a single idea: **one number a day.**
+
+Everything you eat subtracts from it. Every run, hike, lift and step adds back. That one number
+tells you whether today moved you toward looking the way you want to look.
+
+Most fitness apps silo the pillars — a food app that doesn't know you ran 10k, a run tracker that
+doesn't know you ate 3,000 calories, a step counter that just watches. Body composition is driven by
+energy balance plus protein and training stimulus, so Zephyr keeps all of it in one ledger.
+
+Two things make it more than another tracker:
+
+**It adapts.** After two weeks it stops trusting the textbook BMR formula and learns your *actual*
+maintenance calories from your smoothed weight trend against your logged intake and burn. Prediction
+equations carry roughly ±15% error for an individual, and that error is why people stall on a
+"correct" target and conclude their metabolism is broken.
+
+**It pushes.** A coach that knows your plan, your pace against today's step goal, your streak, and
+the session you said you'd do at 6pm — and speaks up while you can still change the outcome.
+
+---
+
+## Project layout
+
+```
+Zephyr/
+├─ core/     standalone Kotlin/JVM build — all decision-making logic, zero Android dependencies
+├─ app/      the Android application
+└─ docs/     privacy policy and Play Store material
+```
+
+`core` is a separate Gradle build pulled in via `includeBuild`. That separation is deliberate: the
+formulas, safety clamps, trend smoothing, progression rules and notification decisions are the parts
+that can be *silently wrong*, so they live somewhere they can be run and tested anywhere a JDK
+exists — no Android SDK, no emulator, no device.
+
+```bash
+./gradlew -p core test        # domain logic — runs anywhere
+./gradlew :app:assembleDebug  # the APK — needs the Android SDK
+```
+
+## What's inside `core`
+
+| Area | What it decides |
+|---|---|
+| `energy` | BMR, TDEE, calorie targets with safety rails, macro split, adaptive calibration |
+| `trend` | EMA weight smoothing, weekly rate, goal projection |
+| `activity` | MET-based burn with grade-aware hiking, GPS filtering, pace |
+| `steps` | Goals derived from your own median, pace against a realistic daily curve |
+| `plan` | Weekly skeleton + progression, adherence, double progression for lifting |
+| `nudge` | What the app says and when — quiet hours, daily budget, priority, dedupe |
+| `streak` | Adherence streaks that survive one bad meal |
+| `ledger` | The daily energy balance and weekly summary |
+
+## Design rules the code is held to
+
+- **Never shame.** Over budget is amber, not red. No notification contains the words "failed" or
+  "lazy" — there's a test that enforces it. Shame apps get uninstalled, and an uninstalled app helps
+  nobody.
+- **No unsafe prescriptions.** Deficits are capped at 25% of maintenance, floored above resting
+  metabolic rate, and never below an absolute minimum, regardless of how ambitious the goal slider is.
+- **Notifications must be actionable.** Every nudge names the next physical action and arrives while
+  it can still change the day. "1,400 steps — about 13 minutes" at 6pm, not a scolding at 11pm.
+- **Never rewrite history.** Logged food stores a snapshot of its nutrition, so correcting a food
+  next month can't silently change last month's numbers.
+
+## Building
+
+Requires JDK 17+ and the Android SDK. CI builds a debug APK on every push and uploads it as the
+`zephyr-debug-apk` artifact.
+
+## Status
+
+In development. Not yet published.
+
+Zephyr gives general fitness and nutrition guidance. It is not medical advice.
