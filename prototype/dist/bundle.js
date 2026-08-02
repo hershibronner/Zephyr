@@ -1,4 +1,5 @@
 (function () {
+const BUILD_STAMP = "2026-08-02 23:25 UTC · f349c8a";
 'use strict';
 
 // ===== zephyr-core.js ======================================================
@@ -2042,7 +2043,13 @@ function settingsSheet(d) {
     </div>
 
     <div class="divider"></div>
-    <button class="btn danger wide" data-act="reset">Erase everything and start over</button>`;
+    <button class="btn warn wide" data-act="reset">Erase everything and start over</button>
+
+    <div class="center" style="margin-top:6px">
+      <div class="kicker">Build</div>
+      <div class="tiny" style="font-variant-numeric:tabular-nums">${esc(typeof BUILD_STAMP === 'string' ? BUILD_STAMP : 'dev')}</div>
+      <div class="tiny" style="margin-top:6px">Seeing something old? Re-download, then hard-refresh with ⌘⇧R.</div>
+    </div>`;
 }
 
 function simSheet(d) {

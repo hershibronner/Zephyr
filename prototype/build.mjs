@@ -10,6 +10,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -33,7 +34,19 @@ if (exportNames.length < 30) {
 const core = coreSrc.replace(/^export\s+/gm, '');
 const appBody = appSrc.replace(/^import\s+\*\s+as\s+Z\s+from\s+'\.\/zephyr-core\.js';\s*$/m, '');
 
+// Stamped into the page so "am I actually looking at the new build?" is answerable at a glance
+// instead of by guesswork. Git may be unavailable (a ZIP download has no repo), so it degrades.
+let commit = '';
+try {
+  commit = execSync('git rev-parse --short HEAD', { cwd: here, stdio: ['ignore', 'pipe', 'ignore'] })
+    .toString().trim();
+} catch {
+  commit = 'local';
+}
+const builtAt = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
 const bundle = `(function () {
+const BUILD_STAMP = ${JSON.stringify(`${builtAt} UTC · ${commit}`)};
 'use strict';
 
 // ===== zephyr-core.js ======================================================
@@ -62,11 +75,12 @@ mkdirSync(join(here, 'dist'), { recursive: true });
 writeFileSync(join(here, 'dist', 'bundle.js'), bundle);
 writeFileSync(join(here, 'dist', 'zephyr.html'), html);
 
-return { html, bytes: html.length, exports: exportNames.length };
+return { html, bytes: html.length, exports: exportNames.length, stamp: `${builtAt} UTC · ${commit}` };
 }
 
 // Only report when run directly; the dev server imports this and prints its own line.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { bytes, exports } = build();
+  const { bytes, exports, stamp } = build();
   console.log(`✓ built dist/zephyr.html — ${(bytes / 1024).toFixed(1)} kB, ${exports} core exports inlined`);
+  console.log(`  build ${stamp}`);
 }
