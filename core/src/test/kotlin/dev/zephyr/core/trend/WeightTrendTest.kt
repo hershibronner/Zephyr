@@ -109,4 +109,48 @@ class WeightTrendTest {
         // Half a kilo a week is 7700*0.5/7 = 550 kcal/day.
         assertEquals(-550, WeightTrend.impliedDailyImbalanceKcal(-0.5))
     }
+
+    @Test
+    fun `fitted change needs at least two readings`() {
+        assertNull(WeightTrend.fittedChangeKg(emptyList()))
+        assertNull(WeightTrend.fittedChangeKg(listOf(WeightEntry(start, 80.0))))
+    }
+
+    @Test
+    fun `fitted change recovers a clean linear loss`() {
+        val weights = (0 until 28).map { 90.0 - it * 0.0649 }
+        val change = WeightTrend.fittedChangeKg(entries(*weights.toDoubleArray()))!!
+        assertEquals(-0.0649 * 27, change, 0.001)
+    }
+
+    @Test
+    fun `fitted change is unbiased where the smoothed endpoints are not`() {
+        // The trend is seeded at the first weigh-in, so during warm-up its endpoints understate real
+        // loss by roughly a third. Fed to AdaptiveTdee that reads as a lower maintenance and
+        // prescribes a deeper deficit than the user asked for.
+        val lossPerDay = 500.0 / 7700.0
+        val weights = (0 until 28).map { 90.0 - it * lossPerDay }
+        val entries = entries(*weights.toDoubleArray())
+
+        val trueChange = weights.last() - weights.first()
+        val fitted = WeightTrend.fittedChangeKg(entries)!!
+        val result = WeightTrend.calculate(entries)
+        val smoothed = result.points.last().trendKg - result.points.first().trendKg
+
+        assertEquals(trueChange, fitted, 0.01)
+        assertTrue(
+            abs(smoothed) < abs(trueChange) * 0.8,
+            "expected the smoothed endpoints to lag; they didn't, so this test proves nothing",
+        )
+    }
+
+    @Test
+    fun `fitted change shrugs off day-to-day water weight`() {
+        val lossPerDay = 0.06
+        val noise = listOf(0.8, -0.5, 0.3, -0.9, 0.6, -0.2, 0.1)
+        val weights = (0 until 28).map { 90.0 - it * lossPerDay + noise[it % noise.size] }
+        val fitted = WeightTrend.fittedChangeKg(entries(*weights.toDoubleArray()))!!
+
+        assertEquals(-lossPerDay * 27, fitted, 0.25)
+    }
 }

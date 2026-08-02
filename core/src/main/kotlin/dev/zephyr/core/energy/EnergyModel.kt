@@ -222,12 +222,22 @@ data class DailyEnergyRecord(
 /**
  * Learns actual maintenance calories from observed reality instead of trusting the equation.
  *
- * Over a window, energy conservation gives:
+ * Energy conservation over the window gives total expenditure:
  *
- *     measuredTDEE = meanIntake + meanExerciseBurn − (trendWeightChange · 7700 / days)
+ *     totalExpenditure = meanIntake − (trendWeightChange · 7700 / days)
  *
- * A user who loses 0.5 kg over 14 days while eating 2,000 kcal was running a ~275 kcal/day deficit,
- * so their true maintenance is ~2,275 — regardless of what Mifflin-St Jeor predicted. Prediction
+ * but [TdeeCalculator] defines maintenance as the baseline *before* logged exercise, because the
+ * daily ledger adds each session's burn on top of the target. So logged exercise is subtracted back
+ * out to leave the comparable figure:
+ *
+ *     measuredBaseline = meanIntake − meanExerciseBurn − (trendWeightChange · 7700 / days)
+ *
+ * Adding that term instead of subtracting it inflates the estimate by twice the exercise burn, and
+ * only for people who train — silently handing back the entire deficit of the users most likely to
+ * be doing everything right.
+ *
+ * A user who loses 0.5 kg over 14 days while eating 2,000 kcal and burning 300 in sessions has a
+ * non-exercise baseline of ~2,250, regardless of what Mifflin-St Jeor predicted. Prediction
  * equations carry ±15% error for an individual, and that error is exactly why people stall on a
  * "correct" target and conclude their metabolism is broken.
  *
@@ -246,17 +256,37 @@ object AdaptiveTdee {
 
     /**
      * @param records consecutive days of logged intake and exercise
-     * @param trendWeightStartKg smoothed weight at the start of the window (never a raw weigh-in)
-     * @param trendWeightEndKg smoothed weight at the end of the window
+     * @param trendWeightStartKg weight at the start of the window
+     * @param trendWeightEndKg weight at the end of the window
      */
     fun calculate(
         formulaTdee: Double,
         records: List<DailyEnergyRecord>,
         trendWeightStartKg: Double?,
         trendWeightEndKg: Double?,
+    ): AdaptiveTdeeResult = calculate(
+        formulaTdee = formulaTdee,
+        records = records,
+        weightChangeKg = if (trendWeightStartKg == null || trendWeightEndKg == null) {
+            null
+        } else {
+            trendWeightEndKg - trendWeightStartKg
+        },
+    )
+
+    /**
+     * @param weightChangeKg change over the window. Prefer
+     *   [dev.zephyr.core.trend.WeightTrend.fittedChangeKg]: differencing the smoothed trend's
+     *   endpoints understates real change while the smoothing is still warming up, which biases
+     *   this estimate low and the resulting deficit deeper than requested.
+     */
+    fun calculate(
+        formulaTdee: Double,
+        records: List<DailyEnergyRecord>,
+        weightChangeKg: Double?,
     ): AdaptiveTdeeResult {
         val days = records.size
-        if (days < MIN_DAYS || trendWeightStartKg == null || trendWeightEndKg == null) {
+        if (days < MIN_DAYS || weightChangeKg == null) {
             return AdaptiveTdeeResult(
                 tdeeKcal = formulaTdee.roundToInt(),
                 formulaTdeeKcal = formulaTdee.roundToInt(),
@@ -268,10 +298,9 @@ object AdaptiveTdee {
 
         val meanIntake = records.sumOf { it.intakeKcal }.toDouble() / days
         val meanExercise = records.sumOf { it.exerciseKcal }.toDouble() / days
-        val weightChangeKg = trendWeightEndKg - trendWeightStartKg
         val dailyImbalance = weightChangeKg * KCAL_PER_KG / days
 
-        val measured = meanIntake + meanExercise - dailyImbalance
+        val measured = meanIntake - meanExercise - dailyImbalance
 
         if (measured < MIN_PLAUSIBLE_TDEE || measured > MAX_PLAUSIBLE_TDEE) {
             return AdaptiveTdeeResult(

@@ -2,10 +2,12 @@ package dev.zephyr.core.energy
 
 import dev.zephyr.core.model.ActivityLevel
 import dev.zephyr.core.model.GoalPace
+import dev.zephyr.core.model.KCAL_PER_KG
 import dev.zephyr.core.model.Sex
 import dev.zephyr.core.model.UserProfile
 import java.time.LocalDate
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -280,15 +282,41 @@ class AdaptiveTdeeTest {
     }
 
     @Test
-    fun `stable weight means maintenance equals intake plus exercise`() {
+    fun `stable weight means non-exercise maintenance is intake minus exercise`() {
+        // Holding weight on 2400 kcal means expenditure is 2400. 300 of it was logged training, so
+        // the baseline the daily target is built from — before exercise is added back — is 2100.
         val result = AdaptiveTdee.calculate(2000.0, records(21, 2400, 300), 75.0, 75.0)
-        assertEquals(2700, result.measuredTdeeKcal)
+        assertEquals(2100, result.measuredTdeeKcal)
     }
 
     @Test
-    fun `exercise calories are included in the measured maintenance`() {
+    fun `logged exercise is subtracted so the ledger cannot count it twice`() {
         val withExercise = AdaptiveTdee.calculate(2400.0, records(21, 2000, 400), 80.0, 80.0)
         val without = AdaptiveTdee.calculate(2400.0, records(21, 2000, 0), 80.0, 80.0)
-        assertEquals(400, withExercise.measuredTdeeKcal!! - without.measuredTdeeKcal!!)
+        assertEquals(-400, withExercise.measuredTdeeKcal!! - without.measuredTdeeKcal!!)
+    }
+
+    @Test
+    fun `measured baseline plus exercise reconstructs true total expenditure`() {
+        // The invariant that matters: whatever the app measures, adding a day's logged burn back on
+        // must land on what the person actually expends. Getting this sign wrong inflates the target
+        // by twice the exercise burn and quietly erases the deficit of everyone who trains.
+        val intake = 2000
+        val exercise = 300
+        val weeklyLossKg = 0.5
+        val days = 21
+        val trendDrop = weeklyLossKg / 7 * days
+
+        val result = AdaptiveTdee.calculate(
+            formulaTdee = 2400.0,
+            records = records(days, intake, exercise),
+            trendWeightStartKg = 80.0,
+            trendWeightEndKg = 80.0 - trendDrop,
+        )
+
+        val trueTotalExpenditure = intake + (weeklyLossKg / 7 * KCAL_PER_KG)
+        val reconstructed = result.measuredTdeeKcal!! + exercise
+
+        assertEquals(trueTotalExpenditure.roundToInt(), reconstructed, "baseline + exercise != expenditure")
     }
 }

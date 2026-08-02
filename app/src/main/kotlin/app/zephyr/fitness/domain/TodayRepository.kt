@@ -131,7 +131,7 @@ class TodayRepository(
         val bmr = BasalMetabolicRate.forProfile(profile, today)
         val formulaTdee = bmr * profile.activityLevel.multiplier
 
-        val adaptive = calibrate(today, formulaTdee, food, sessions, trend)
+        val adaptive = calibrate(today, formulaTdee, food, sessions, weights)
         val maintenance = if (settings.useAdaptiveTdee && adaptive?.measuredTdeeKcal != null) {
             adaptive.tdeeKcal.toDouble()
         } else {
@@ -215,7 +215,7 @@ class TodayRepository(
         formulaTdee: Double,
         food: List<FoodLogEntity>,
         sessions: List<SessionEntity>,
-        trend: WeightTrendResult,
+        weights: List<WeightEntity>,
     ): AdaptiveTdeeResult? {
         val window = today.minusDays(AdaptiveTdee.FULL_CONFIDENCE_DAYS.toLong())
         val intake = food.filter { !it.date.isBefore(window) }
@@ -231,11 +231,18 @@ class TodayRepository(
             DailyEnergyRecord(date, intake.getValue(date), burn[date] ?: 0)
         }
 
+        // The rate comes from a straight-line fit of the raw weigh-ins rather than the smoothed
+        // trend's endpoints: the smoothing is seeded at the first reading and lags for weeks, which
+        // would bias maintenance low and the deficit deeper than the user asked for.
         val startDate = records.first().date
-        val startTrend = trend.points.firstOrNull { !it.date.isBefore(startDate) }?.trendKg
-        val endTrend = trend.points.lastOrNull()?.trendKg
+        val windowWeights = weights.filter { !it.date.isBefore(startDate) }
+            .map { TrendEntry(it.date, it.weightKg) }
 
-        return AdaptiveTdee.calculate(formulaTdee, records, startTrend, endTrend)
+        return AdaptiveTdee.calculate(
+            formulaTdee = formulaTdee,
+            records = records,
+            weightChangeKg = WeightTrend.fittedChangeKg(windowWeights),
+        )
     }
 
     private fun streakFrom(
@@ -275,9 +282,8 @@ class TodayRepository(
         proteinTargetG: Int,
         maintenance: Double,
     ): WeeklySummary {
-        val from = today.minusDays(6)
-        val balances = (0..6).map { offset ->
-            val date = from.plusDays(offset.toLong())
+        // Complete days only — today is still being logged and would fake a deeper deficit.
+        val balances = LedgerSummary.lastCompleteDays(today).map { date ->
             balanceFor(
                 date = date,
                 food = food.filter { it.date == date },

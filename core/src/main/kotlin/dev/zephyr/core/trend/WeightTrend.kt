@@ -106,4 +106,40 @@ object WeightTrend {
     /** Average daily energy imbalance implied by a trend rate, for the "what this means" copy. */
     fun impliedDailyImbalanceKcal(weeklyRateKg: Double): Int =
         (weeklyRateKg * KCAL_PER_KG / 7.0).roundToInt()
+
+    /**
+     * Weight change across a window, from a least-squares fit of the raw weigh-ins.
+     *
+     * The exponential trend above is the right thing to *show* — it kills the water-weight noise
+     * that makes people abandon working plans. It is the wrong thing to measure a *rate* with,
+     * because it is seeded at the first weigh-in and takes weeks to catch up. Differencing its
+     * endpoints during that warm-up understates real loss by roughly a third, which feeds
+     * [dev.zephyr.core.energy.AdaptiveTdee] a maintenance figure 150–250 kcal too low and quietly
+     * prescribes a deeper deficit than the user asked for — during precisely the first six weeks
+     * they are deciding whether to trust the app.
+     *
+     * A straight-line fit has no such lag: it weights every reading equally and is unbiased from
+     * the first day.
+     */
+    fun fittedChangeKg(entries: List<WeightEntry>): Double? {
+        if (entries.size < 2) return null
+
+        val origin = entries.minOf { it.date.toEpochDay() }
+        val xs = entries.map { (it.date.toEpochDay() - origin).toDouble() }
+        val ys = entries.map { it.weightKg }
+        val meanX = xs.average()
+        val meanY = ys.average()
+
+        var numerator = 0.0
+        var denominator = 0.0
+        for (i in xs.indices) {
+            numerator += (xs[i] - meanX) * (ys[i] - meanY)
+            denominator += (xs[i] - meanX) * (xs[i] - meanX)
+        }
+        // Every weigh-in landed on the same day; no slope can be inferred.
+        if (denominator == 0.0) return null
+
+        val slopePerDay = numerator / denominator
+        return slopePerDay * (xs.max() - xs.min())
+    }
 }

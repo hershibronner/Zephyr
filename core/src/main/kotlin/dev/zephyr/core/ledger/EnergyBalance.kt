@@ -90,6 +90,17 @@ object LedgerSummary {
     /** A day counts as adherent if intake landed within this fraction of the adjusted target. */
     const val ADHERENCE_TOLERANCE = 0.10
 
+    /**
+     * The window a weekly summary should cover: the last [count] *complete* days, ending yesterday.
+     *
+     * Today is deliberately excluded. A day in progress has only part of its food logged, so
+     * including it drags the average intake down and reports a deficit far deeper than the user is
+     * actually running — at breakfast it would claim they are losing three times their target rate.
+     * A projection that is wrong every morning is worse than no projection.
+     */
+    fun lastCompleteDays(today: LocalDate, count: Int = 7): List<LocalDate> =
+        (count downTo 1).map { today.minusDays(it.toLong()) }
+
     fun weekly(balances: List<EnergyBalance>): WeeklySummary {
         val logged = balances.filter { it.consumedKcal > 0 }
         if (logged.isEmpty()) {
@@ -121,6 +132,9 @@ object LedgerSummary {
             projectedWeeklyKg = avgImbalance * 7.0 / KCAL_PER_KG,
         )
     }
+
+    fun weeklyFor(today: LocalDate, balanceOn: (LocalDate) -> EnergyBalance): WeeklySummary =
+        weekly(lastCompleteDays(today).map(balanceOn))
 
     fun isAdherent(balance: EnergyBalance): Boolean {
         if (balance.consumedKcal <= 0) return false

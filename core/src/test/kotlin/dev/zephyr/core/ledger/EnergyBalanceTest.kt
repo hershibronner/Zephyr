@@ -135,4 +135,38 @@ class LedgerSummaryTest {
     fun `blowing past the target is not adherent`() {
         assertEquals(0, LedgerSummary.weekly(week(consumed = 3200)).adherencePercent)
     }
+
+    @Test
+    fun `the weekly window ends yesterday, not today`() {
+        val today = LocalDate.of(2026, 4, 15)
+        val days = LedgerSummary.lastCompleteDays(today)
+
+        assertEquals(7, days.size)
+        assertEquals(today.minusDays(7), days.first())
+        assertEquals(today.minusDays(1), days.last())
+        assertTrue(days.none { it == today }, "a day still being logged must not enter the summary")
+    }
+
+    @Test
+    fun `a part-logged today cannot fake a deeper deficit`() {
+        val today = LocalDate.of(2026, 4, 15)
+        // Seven full days eating exactly to a 500 kcal deficit, and a today with one meal in it.
+        val byDate = buildMap {
+            LedgerSummary.lastCompleteDays(today).forEach { put(it, 2000) }
+            put(today, 300)
+        }
+        fun balanceOn(date: LocalDate) = EnergyBalance(
+            date = date, targetKcal = 2000, consumedKcal = byDate.getValue(date), exerciseKcal = 0,
+            proteinTargetG = 150, macros = MacroTotals(), maintenanceKcal = 2500,
+        )
+
+        val correct = LedgerSummary.weeklyFor(today, ::balanceOn)
+        val naive = LedgerSummary.weekly((0..6).map { balanceOn(today.minusDays(it.toLong())) })
+
+        assertEquals(-0.45, correct.projectedWeeklyKg, 0.02)
+        assertTrue(
+            naive.projectedWeeklyKg < correct.projectedWeeklyKg - 0.15,
+            "including today should have visibly exaggerated the loss, and did not — test is not proving anything",
+        )
+    }
 }
