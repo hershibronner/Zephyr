@@ -26,13 +26,21 @@ export const ActivityLevel = {
   HIGH: { name: 'HIGH', multiplier: 1.45, label: 'Physical job, constant movement' },
 };
 
+/** Pounds in a kilogram. Zephyr computes in metric and speaks in imperial. */
+export const LB_PER_KG = 2.2046226218;
+
+/**
+ * The rates are whole and half pounds because that's how the people using this think — nobody sets
+ * out to lose 0.45 kg a week. Stored metric because every formula here is, but chosen so the
+ * imperial labels come out exact instead of awkwardly converted.
+ */
 export const GoalPace = {
-  GAIN_SLOW: { name: 'GAIN_SLOW', kgPerWeek: 0.25, label: 'Gain 0.25 kg/week' },
-  MAINTAIN: { name: 'MAINTAIN', kgPerWeek: 0.0, label: 'Maintain' },
-  LOSE_EASY: { name: 'LOSE_EASY', kgPerWeek: -0.25, label: 'Lose 0.25 kg/week' },
-  LOSE_STEADY: { name: 'LOSE_STEADY', kgPerWeek: -0.5, label: 'Lose 0.5 kg/week' },
-  LOSE_FAST: { name: 'LOSE_FAST', kgPerWeek: -0.75, label: 'Lose 0.75 kg/week' },
-  LOSE_AGGRESSIVE: { name: 'LOSE_AGGRESSIVE', kgPerWeek: -1.0, label: 'Lose 1 kg/week' },
+  GAIN_SLOW: { name: 'GAIN_SLOW', kgPerWeek: 0.5 / LB_PER_KG, label: 'Gain ½ lb a week', blurb: 'Build, slowly and cleanly' },
+  MAINTAIN: { name: 'MAINTAIN', kgPerWeek: 0.0, label: 'Stay where I am', blurb: 'Hold this weight, get fitter' },
+  LOSE_EASY: { name: 'LOSE_EASY', kgPerWeek: -0.5 / LB_PER_KG, label: 'Lose ½ lb a week', blurb: 'Barely notice it' },
+  LOSE_STEADY: { name: 'LOSE_STEADY', kgPerWeek: -1.0 / LB_PER_KG, label: 'Lose 1 lb a week', blurb: 'The sweet spot' },
+  LOSE_FAST: { name: 'LOSE_FAST', kgPerWeek: -1.5 / LB_PER_KG, label: 'Lose 1½ lb a week', blurb: 'You will feel this one' },
+  LOSE_AGGRESSIVE: { name: 'LOSE_AGGRESSIVE', kgPerWeek: -2.0 / LB_PER_KG, label: 'Lose 2 lb a week', blurb: 'Only if you have weight to spare' },
 };
 
 // ---------------------------------------------------------------------------
@@ -845,6 +853,47 @@ export function evaluateNudges(state, settings) {
   const ranked = [...demands].sort((a, b) => b.priority - a.priority).slice(0, budget);
   return [...celebrations, ...ranked];
 }
+
+
+// ---------------------------------------------------------------------------
+// Imperial display
+//
+// Every formula above is metric because that's what they're defined in. Conversion happens here,
+// at the boundary, so the numbers the app reasons about and the numbers it shows can never drift
+// apart the way they do when units are converted early and carried around.
+// ---------------------------------------------------------------------------
+
+export const CM_PER_INCH = 2.54;
+export const M_PER_MILE = 1609.344;
+export const FT_PER_M = 3.280839895;
+
+export const kgToLb = kg => kg * LB_PER_KG;
+export const lbToKg = lb => lb / LB_PER_KG;
+export const cmToInches = cm => cm / CM_PER_INCH;
+export const ftInToCm = (feet, inches) => (feet * 12 + inches) * CM_PER_INCH;
+
+export function cmToFtIn(cm) {
+  const total = Math.round(cmToInches(cm));
+  return { feet: Math.trunc(total / 12), inches: total % 12 };
+}
+
+export const metresToMiles = m => m / M_PER_MILE;
+export const metresToFeet = m => m * FT_PER_M;
+
+/** Body weight, e.g. "187.4 lb". */
+export const formatWeight = (kg, decimals = 1) => `${kgToLb(kg).toFixed(decimals)} lb`;
+export const formatHeight = cm => { const { feet, inches } = cmToFtIn(cm); return `${feet}'${inches}"`; };
+export const formatMiles = (m, decimals = 2) => `${metresToMiles(m).toFixed(decimals)} mi`;
+export const formatFeet = m => `${fmt(Math.round(metresToFeet(m)))} ft`;
+
+/** Running pace in minutes per mile — the only pace an American runner reads instinctively. */
+export function paceSecondsPerMile(distanceMetres, durationSeconds) {
+  if (distanceMetres <= 0 || durationSeconds <= 0) return null;
+  return durationSeconds / metresToMiles(distanceMetres);
+}
+
+/** Weekly rate as pounds, signed, e.g. "-1.1 lb". */
+export const formatRateLb = kgPerWeek => `${kgPerWeek >= 0 ? '+' : ''}${kgToLb(kgPerWeek).toFixed(1)} lb`;
 
 // ---------------------------------------------------------------------------
 // Date helpers — plain ISO strings, no timezone surprises

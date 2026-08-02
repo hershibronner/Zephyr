@@ -30,13 +30,21 @@ const ActivityLevel = {
   HIGH: { name: 'HIGH', multiplier: 1.45, label: 'Physical job, constant movement' },
 };
 
+/** Pounds in a kilogram. Zephyr computes in metric and speaks in imperial. */
+const LB_PER_KG = 2.2046226218;
+
+/**
+ * The rates are whole and half pounds because that's how the people using this think — nobody sets
+ * out to lose 0.45 kg a week. Stored metric because every formula here is, but chosen so the
+ * imperial labels come out exact instead of awkwardly converted.
+ */
 const GoalPace = {
-  GAIN_SLOW: { name: 'GAIN_SLOW', kgPerWeek: 0.25, label: 'Gain 0.25 kg/week' },
-  MAINTAIN: { name: 'MAINTAIN', kgPerWeek: 0.0, label: 'Maintain' },
-  LOSE_EASY: { name: 'LOSE_EASY', kgPerWeek: -0.25, label: 'Lose 0.25 kg/week' },
-  LOSE_STEADY: { name: 'LOSE_STEADY', kgPerWeek: -0.5, label: 'Lose 0.5 kg/week' },
-  LOSE_FAST: { name: 'LOSE_FAST', kgPerWeek: -0.75, label: 'Lose 0.75 kg/week' },
-  LOSE_AGGRESSIVE: { name: 'LOSE_AGGRESSIVE', kgPerWeek: -1.0, label: 'Lose 1 kg/week' },
+  GAIN_SLOW: { name: 'GAIN_SLOW', kgPerWeek: 0.5 / LB_PER_KG, label: 'Gain ½ lb a week', blurb: 'Build, slowly and cleanly' },
+  MAINTAIN: { name: 'MAINTAIN', kgPerWeek: 0.0, label: 'Stay where I am', blurb: 'Hold this weight, get fitter' },
+  LOSE_EASY: { name: 'LOSE_EASY', kgPerWeek: -0.5 / LB_PER_KG, label: 'Lose ½ lb a week', blurb: 'Barely notice it' },
+  LOSE_STEADY: { name: 'LOSE_STEADY', kgPerWeek: -1.0 / LB_PER_KG, label: 'Lose 1 lb a week', blurb: 'The sweet spot' },
+  LOSE_FAST: { name: 'LOSE_FAST', kgPerWeek: -1.5 / LB_PER_KG, label: 'Lose 1½ lb a week', blurb: 'You will feel this one' },
+  LOSE_AGGRESSIVE: { name: 'LOSE_AGGRESSIVE', kgPerWeek: -2.0 / LB_PER_KG, label: 'Lose 2 lb a week', blurb: 'Only if you have weight to spare' },
 };
 
 // ---------------------------------------------------------------------------
@@ -850,6 +858,47 @@ function evaluateNudges(state, settings) {
   return [...celebrations, ...ranked];
 }
 
+
+// ---------------------------------------------------------------------------
+// Imperial display
+//
+// Every formula above is metric because that's what they're defined in. Conversion happens here,
+// at the boundary, so the numbers the app reasons about and the numbers it shows can never drift
+// apart the way they do when units are converted early and carried around.
+// ---------------------------------------------------------------------------
+
+const CM_PER_INCH = 2.54;
+const M_PER_MILE = 1609.344;
+const FT_PER_M = 3.280839895;
+
+const kgToLb = kg => kg * LB_PER_KG;
+const lbToKg = lb => lb / LB_PER_KG;
+const cmToInches = cm => cm / CM_PER_INCH;
+const ftInToCm = (feet, inches) => (feet * 12 + inches) * CM_PER_INCH;
+
+function cmToFtIn(cm) {
+  const total = Math.round(cmToInches(cm));
+  return { feet: Math.trunc(total / 12), inches: total % 12 };
+}
+
+const metresToMiles = m => m / M_PER_MILE;
+const metresToFeet = m => m * FT_PER_M;
+
+/** Body weight, e.g. "187.4 lb". */
+const formatWeight = (kg, decimals = 1) => `${kgToLb(kg).toFixed(decimals)} lb`;
+const formatHeight = cm => { const { feet, inches } = cmToFtIn(cm); return `${feet}'${inches}"`; };
+const formatMiles = (m, decimals = 2) => `${metresToMiles(m).toFixed(decimals)} mi`;
+const formatFeet = m => `${fmt(Math.round(metresToFeet(m)))} ft`;
+
+/** Running pace in minutes per mile — the only pace an American runner reads instinctively. */
+function paceSecondsPerMile(distanceMetres, durationSeconds) {
+  if (distanceMetres <= 0 || durationSeconds <= 0) return null;
+  return durationSeconds / metresToMiles(distanceMetres);
+}
+
+/** Weekly rate as pounds, signed, e.g. "-1.1 lb". */
+const formatRateLb = kgPerWeek => `${kgPerWeek >= 0 ? '+' : ''}${kgToLb(kgPerWeek).toFixed(1)} lb`;
+
 // ---------------------------------------------------------------------------
 // Date helpers — plain ISO strings, no timezone surprises
 // ---------------------------------------------------------------------------
@@ -914,7 +963,7 @@ function ageOn(birthYear, iso) {
 }
 
 
-const Z = { KCAL_PER_KG, Sex, ActivityLevel, GoalPace, bmr, formulaTdee, TargetAdjustment, MAX_DEFICIT_FRACTION, BMR_SAFETY_MARGIN, FLOOR_MALE, FLOOR_FEMALE, calorieTarget, PROTEIN_G_PER_KG_DEFICIT, PROTEIN_G_PER_KG_MAINTENANCE, FAT_G_PER_KG, macros, TdeeConfidence, ADAPTIVE_MIN_DAYS, ADAPTIVE_FULL_DAYS, adaptiveTdee, TREND_SMOOTHING, weightTrend, weeklyRate, fittedChangeKg, projectGoalDate, ActivityType, ACTIVITY_LABEL, metFor, activityBurn, paceSecondsPerKm, formatPace, STEP_GOAL_DEFAULT, STEP_GOAL_MIN, STEP_GOAL_MAX, suggestStepGoal, expectedStepFraction, stepStatus, minutesToWalk, BalanceState, energyBalance, lastCompleteDays, weeklySummary, isAdherent, qualifies, calculateStreak, STREAK_MILESTONES, milestoneReached, WEEKLY_INCREASE, DELOAD_EVERY, DELOAD_FACTOR, STARTING_RUN_METRES, MAX_RUN_METRES, STARTING_HIKE_MINUTES, defaultTemplate, prescriptionsForWeek, adherence, nextStrengthPrescription, NudgeCategory, CoachTone, NudgePriority, evaluateNudges, addDays, daysBetween, isoDayOfWeek, startOfWeek, clamp, formatClock, fmt, ageOn };
+const Z = { KCAL_PER_KG, Sex, ActivityLevel, LB_PER_KG, GoalPace, bmr, formulaTdee, TargetAdjustment, MAX_DEFICIT_FRACTION, BMR_SAFETY_MARGIN, FLOOR_MALE, FLOOR_FEMALE, calorieTarget, PROTEIN_G_PER_KG_DEFICIT, PROTEIN_G_PER_KG_MAINTENANCE, FAT_G_PER_KG, macros, TdeeConfidence, ADAPTIVE_MIN_DAYS, ADAPTIVE_FULL_DAYS, adaptiveTdee, TREND_SMOOTHING, weightTrend, weeklyRate, fittedChangeKg, projectGoalDate, ActivityType, ACTIVITY_LABEL, metFor, activityBurn, paceSecondsPerKm, formatPace, STEP_GOAL_DEFAULT, STEP_GOAL_MIN, STEP_GOAL_MAX, suggestStepGoal, expectedStepFraction, stepStatus, minutesToWalk, BalanceState, energyBalance, lastCompleteDays, weeklySummary, isAdherent, qualifies, calculateStreak, STREAK_MILESTONES, milestoneReached, WEEKLY_INCREASE, DELOAD_EVERY, DELOAD_FACTOR, STARTING_RUN_METRES, MAX_RUN_METRES, STARTING_HIKE_MINUTES, defaultTemplate, prescriptionsForWeek, adherence, nextStrengthPrescription, NudgeCategory, CoachTone, NudgePriority, evaluateNudges, CM_PER_INCH, M_PER_MILE, FT_PER_M, kgToLb, lbToKg, cmToInches, ftInToCm, cmToFtIn, metresToMiles, metresToFeet, formatWeight, formatHeight, formatMiles, formatFeet, paceSecondsPerMile, formatRateLb, addDays, daysBetween, isoDayOfWeek, startOfWeek, clamp, formatClock, fmt, ageOn };
 
 // ===== app.js ==============================================================
 /**
@@ -957,6 +1006,8 @@ const blank = () => ({
   nudgeLog: [],   // {key, date, isCelebration}
   clockOffsetMinutes: 0,
   tab: 'today',
+  /** Day being viewed. Null means today; the date strip sets it to look back. */
+  selectedDate: null,
 });
 
 let S = load();
@@ -995,17 +1046,24 @@ const nowHour = () => now().getHours();
 const nowMinute = () => now().getMinutes();
 const clockLabel = () => `${String(nowHour()).padStart(2, '0')}:${String(nowMinute()).padStart(2, '0')}`;
 
+/** The day on screen, which is today unless the date strip says otherwise. */
+const viewDate = () => S.selectedDate ?? todayISO();
+const isToday = () => viewDate() === todayISO();
+
 // ---------------------------------------------------------------------------
 // Derived state — one snapshot everything renders from
 // ---------------------------------------------------------------------------
 
 function derive() {
-  const date = todayISO();
+  const date = viewDate();
   const p = S.profile;
   const ready = S.onboarded && p.weightKg !== '' && p.heightCm !== '' && p.birthYear !== '';
 
   const steps = S.steps[date] ?? 0;
-  const stepStatus = Z.stepStatus(steps, S.stepGoal, nowHour(), nowMinute());
+  // A past day is finished, so judge its steps against the whole day rather than the current hour —
+  // otherwise looking back at 9am makes every previous day appear to be failing.
+  const [h, m] = isToday() ? [nowHour(), nowMinute()] : [23, 59];
+  const stepStatus = Z.stepStatus(steps, S.stepGoal, h, m);
   const trend = Z.weightTrend(S.weights);
 
   if (!ready) {
@@ -1222,8 +1280,9 @@ function render() {
   const d = derive();
 
   if (!S.onboarded) {
-    app.innerHTML = `<div id="shell"><main>${onboardingView(d)}</main></div>`;
+    app.innerHTML = `<div id="shell"><main class="ob-main">${onboardingView()}</main></div>`;
     wire(d);
+    runCountUps();
     return;
   }
 
@@ -1240,15 +1299,41 @@ function render() {
 }
 
 function topbar(pendingCount) {
+  const initials = (S.profile.name || 'You').trim().slice(0, 2).toUpperCase();
+  const d = now();
+  const stamp = d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+
   return `<div class="topbar">
-    <span class="clock">${clockLabel()}</span>
-    <span class="spacer"></span>
+    <button class="avatar" data-act="settings" aria-label="Profile and settings">${esc(initials)}</button>
+    <div class="greet">
+      <div class="hi">${esc(greetingFor(d.getHours()))}</div>
+      <div class="date">${esc(stamp)}</div>
+    </div>
+    <button class="icon-btn" data-act="sim" aria-label="Simulator">${icon('sliders')}</button>
     <button class="icon-btn" data-act="coach" aria-label="Coach">
       ${icon('bell')}${pendingCount ? `<span class="badge">${pendingCount}</span>` : ''}
     </button>
-    <button class="icon-btn" data-act="sim" aria-label="Simulator">${icon('sliders')}</button>
-    <button class="icon-btn" data-act="settings" aria-label="Settings">${icon('gear')}</button>
   </div>`;
+}
+
+const greetingFor = hour =>
+  hour < 5 ? 'Still up?' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+/** Seven days ending today, so a forgotten meal can be added the next morning. */
+function dateStrip() {
+  const today = todayISO();
+  const selected = viewDate();
+
+  return `<div class="dates">${Array.from({ length: 7 }, (_, i) => {
+    const date = Z.addDays(today, i - 6);
+    const d = new Date(date + 'T00:00:00Z');
+    const logged = S.food.some(f => f.date === date) || S.sessions.some(s => s.date === date);
+    return `<button class="day ${date === selected ? 'on' : ''}" data-act="pick-date" data-date="${date}">
+      <span class="dow">${d.toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' }).slice(0, 3)}</span>
+      <span class="num">${d.getUTCDate()}</span>
+      <span class="pip ${logged ? '' : 'hidden'}"></span>
+    </button>`;
+  }).join('')}</div>`;
 }
 
 function nav() {
@@ -1260,7 +1345,7 @@ function nav() {
     ['progress', 'Progress', 'chart'],
   ];
   return `<nav>${tabs.map(([id, label, ic]) =>
-    `<button data-tab="${id}" class="${S.tab === id ? 'on' : ''}">${icon(ic)}<span>${label}</span></button>`).join('')}</nav>`;
+    `<button data-tab="${id}" class="${S.tab === id ? 'on' : ''}" aria-label="${label}">${icon(ic)}</button>`).join('')}</nav>`;
 }
 
 function screen(d) {
@@ -1279,79 +1364,84 @@ function todayView(d) {
   if (!d.ready) return `<div class="empty">Finish setup to see your day.</div>`;
   const b = d.balance;
   const over = b.remainingKcal < 0;
-
-  const headline = d.streak.current >= 3 ? `${d.streak.current} day streak`
-    : b.consumedKcal === 0 ? 'Fresh start' : 'Today';
-  const sub = b.state === Z.BalanceState.OVER ? `${Math.abs(b.remainingKcal)} over — a walk trims it back.`
-    : b.state === Z.BalanceState.NEARLY_THERE ? 'Right on target.'
-      : b.state === Z.BalanceState.UNDER_FUELLED ? "Plenty left to eat. Don't run on empty."
-        : b.consumedKcal === 0 ? "Log your first meal when you're ready." : 'On track.';
-
   const next = d.prescriptions.find(p => p.date === d.date);
+  const done = next && S.sessions.some(s => s.type === next.slot.type && s.date === d.date);
 
   return `
-    <div><h1 class="screen">${esc(headline)}</h1><p class="sub">${esc(sub)}</p></div>
+    ${dateStrip()}
 
-    ${next ? `<div class="card tap" data-act="tab-plan">
-      <div class="kicker">TODAY'S MISSION</div>
-      <div class="row"><div class="col">
-        <div style="font-size:16px;font-weight:650">${esc(next.headline)}</div>
-        <div class="tiny">${esc(next.detail)}</div>
-      </div><div class="val" style="color:var(--t2);font-size:13px">${esc(Z.formatClock(next.slot.timeOfDay))}</div></div>
-    </div>` : ''}
-
-    <div class="hero">${ring(b.fractionConsumed, d.stepStatus.fractionOfGoal, over, `
-      <div class="ring-big" style="${over ? 'color:var(--amber)' : ''}">${Z.fmt(Math.abs(b.remainingKcal))}</div>
-      <div class="ring-label">${over ? 'kcal over' : 'kcal left'}</div>
-      <div class="ring-sub">${Z.fmt(b.consumedKcal)} eaten · ${Z.fmt(b.exerciseKcal)} burned</div>`)}
+    <div class="hero-card ${over ? 'over' : ''}">
+      <span class="hero-eyebrow">${isToday() ? 'Today' : esc(prettyDate(d.date))}</span>
+      ${(() => {
+        const text = Z.fmt(Math.abs(b.remainingKcal));
+        // Step the display size down as digits are added, so a four-figure budget still sits
+        // comfortably inside the ring instead of touching both edges.
+        const size = text.length >= 6 ? 42 : text.length >= 5 ? 50 : 58;
+        return ring(b.fractionConsumed, d.stepStatus.fractionOfGoal, over, `
+          <div class="ring-big" style="font-size:${size}px">${text}</div>
+          <div class="ring-label">${over ? 'kcal over' : 'kcal left'}</div>`);
+      })()}
+      <div class="hero-split">
+        <div><div class="v">${Z.fmt(b.consumedKcal)}</div><div class="l">Eaten</div></div>
+        <div><div class="v">${Z.fmt(b.exerciseKcal)}</div><div class="l">Burned</div></div>
+        <div><div class="v">${Z.fmt(b.targetKcal)}</div><div class="l">Target</div></div>
+      </div>
     </div>
 
-    <div class="card">
-      ${bar('PROTEIN', `${b.macros.proteinG} / ${b.proteinTargetG} g`, b.proteinFraction, 'var(--mint)')}
-      ${bar('STEPS', `${Z.fmt(d.stepStatus.steps)} / ${Z.fmt(d.stepStatus.goal)}`, d.stepStatus.fractionOfGoal, 'var(--violet)')}
-      ${b.proteinRemainingG > 0 && b.consumedKcal > 0
-        ? `<p class="tiny">${b.proteinRemainingG}g of protein left — that's what keeps the weight you lose from being muscle.</p>` : ''}
+    <div class="tiles">
+      ${tile('t-sky', 'run', Z.fmt(d.stepStatus.steps), `of ${Z.fmt(d.stepStatus.goal)} steps`, d.stepStatus.fractionOfGoal)}
+      ${tile('t-green', 'leaf', `${b.macros.proteinG}g`, `of ${b.proteinTargetG}g protein`, b.proteinFraction)}
+      ${tile('t-orange', 'flame', Z.fmt(b.exerciseKcal), d.todaysSessions.length === 1 ? '1 session' : `${d.todaysSessions.length} sessions`)}
+      ${tile('t-pink', 'bolt', String(d.streak.current), d.streak.current === 1 ? 'day streak' : 'day streak')}
     </div>
 
-    <div class="chips">
-      ${chip('run', 'var(--sky)', d.todaysSessions.length, d.todaysSessions.length === 1 ? 'session' : 'sessions')}
-      ${chip('flame', 'var(--ember)', b.exerciseKcal, 'kcal burned')}
-      ${chip('bolt', 'var(--mint)', d.streak.current, 'day streak')}
-    </div>
+    ${next ? `
+      <div class="section"><h2 class="title">Your plan</h2>
+        <button class="link-btn" data-act="tab-plan">See week</button></div>
+      <div class="plan-card ${done ? 't-green' : 't-violet'}">
+        <span class="chip">${done ? 'Done' : esc(Z.formatClock(next.slot.timeOfDay))}</span>
+        <div class="h">${done ? '✓ ' : ''}${esc(next.headline)}</div>
+        <div class="d">${esc(next.detail)}</div>
+      </div>` : ''}
 
+    <div class="section"><h2 class="title">Weight</h2>
+      <button class="link-btn" data-act="weigh">Log</button></div>
     ${d.trend.currentTrendKg != null ? trendCard(d) : `
-      <div class="card tap" data-act="weigh">
-        <div class="kicker">WEIGH IN</div>
-        <div style="font-size:16px;font-weight:650">Log today's weight</div>
+      <button class="card tap flat" data-act="weigh" style="border:0;font-family:inherit;text-align:left;width:100%">
+        <div class="kicker">Weigh in</div>
+        <div style="font-size:19px;font-weight:780;letter-spacing:-.03em">Log today's weight</div>
         <p class="tiny">Zephyr needs a couple of weeks of weigh-ins before it can measure what you actually burn.</p>
-      </div>`}
+      </button>`}
 
     ${d.todaysFood.length ? `
-      <div class="kicker">TODAY'S FOOD</div>
+      <div class="section"><h2 class="title">${isToday() ? "Today's food" : 'Food'}</h2>
+        <button class="link-btn" data-act="tab-food">All</button></div>
       <div class="list">${d.todaysFood.map(f => `
         <div class="item">
-          <div class="col"><span class="name">${esc(f.name)}</span><span class="meta">${esc(f.slot)}</span></div>
-          <div class="row" style="gap:8px">
+          <div><div class="name">${esc(f.name)}</div><div class="meta">${esc(f.slot)}</div></div>
+          <div style="display:flex;align-items:center;gap:10px">
             <span class="val">${Z.fmt(f.kcal)}</span>
             <button class="x" data-act="del-food" data-id="${f.id}" aria-label="Remove">×</button>
           </div>
-        </div>`).join('')}</div>` : ''}
-    <div style="height:56px"></div>`;
+        </div>`).join('')}</div>` : ''}`;
 }
 
 function trendCard(d) {
   const rate = d.trend.weeklyRateKg;
   const note = rate == null ? 'Keep weighing in — a few more days and the trend becomes reliable.'
     : Math.abs(rate) < 0.05 ? 'Holding steady.'
-      : rate < 0 ? `Down ${Math.abs(rate).toFixed(2)} kg per week.` : `Up ${rate.toFixed(2)} kg per week.`;
+      : rate < 0 ? `Down ${Math.abs(Z.kgToLb(rate)).toFixed(1)} lb a week — right on it.`
+        : `Up ${Z.kgToLb(rate).toFixed(1)} lb a week.`;
 
-  return `<div class="card tap" data-act="weigh">
-    <div class="kicker">TREND WEIGHT</div>
-    <div style="font-size:26px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums">${d.trend.currentTrendKg.toFixed(1)} kg</div>
-    <div class="tiny" style="color:var(--t2)">${esc(note)}</div>
+  return `<button class="card tap flat" data-act="weigh" style="border:0;font-family:inherit;text-align:left;width:100%">
+    <div class="kicker">Trend weight</div>
+    <div style="font-size:36px;font-weight:830;letter-spacing:-.045em;font-variant-numeric:tabular-nums;line-height:1">
+      ${Z.kgToLb(d.trend.currentTrendKg).toFixed(1)}<span style="font-size:19px;font-weight:700;color:var(--muted)"> lb</span>
+    </div>
+    <div class="tiny">${esc(note)}</div>
     ${d.adaptive?.measuredTdeeKcal != null
-      ? `<div class="tiny" style="color:var(--mint)">Zephyr now measures your maintenance at ${Z.fmt(d.adaptive.measuredTdeeKcal)} kcal, from ${d.adaptive.daysOfData} days of your own data.</div>` : ''}
-  </div>`;
+      ? `<div class="callout good">Zephyr now measures your maintenance at ${Z.fmt(d.adaptive.measuredTdeeKcal)} kcal, from ${d.adaptive.daysOfData} days of your own data — not a formula.</div>` : ''}
+  </button>`;
 }
 
 // ---- Food ----------------------------------------------------------------
@@ -1385,7 +1475,7 @@ function foodView(d) {
     }).join('')}
     <div class="card">
       <div class="kicker">MACROS TODAY</div>
-      ${bar('PROTEIN', `${d.balance.macros.proteinG} / ${d.macros.proteinG} g`, d.balance.proteinFraction, 'var(--mint)')}
+      ${bar('PROTEIN', `${d.balance.macros.proteinG} / ${d.macros.proteinG} g`, d.balance.proteinFraction, 'var(--green)')}
       ${bar('CARBS', `${d.balance.macros.carbsG} / ${d.macros.carbsG} g`, d.macros.carbsG ? d.balance.macros.carbsG / d.macros.carbsG : 0, 'var(--sky)')}
       ${bar('FAT', `${d.balance.macros.fatG} / ${d.macros.fatG} g`, d.macros.fatG ? d.balance.macros.fatG / d.macros.fatG : 0, 'var(--ember)')}
     </div>`;
@@ -1398,21 +1488,21 @@ function moveView(d) {
 
   if (live) {
     const secs = live.elapsedSeconds;
-    const pace = Z.paceSecondsPerKm(live.distanceMetres, secs);
+    const pace = Z.paceSecondsPerMile(live.distanceMetres, secs);
     const burn = Z.activityBurn(live.type, secs, live.distanceMetres, live.elevationGainMetres, +S.profile.weightKg);
     return `
       <div><h1 class="screen">${esc(Z.ACTIVITY_LABEL[live.type])}</h1>
       <p class="sub">${live.paused ? 'Paused' : 'Tracking — simulated GPS'}</p></div>
-      <div class="live-stat">
-        <div class="live-big">${(live.distanceMetres / 1000).toFixed(2)}</div>
-        <div class="ring-label">kilometres</div>
+      <div class="center">
+        <div class="live-big">${Z.metresToMiles(live.distanceMetres).toFixed(2)}</div>
+        <div class="tiny" style="font-weight:700;letter-spacing:.1em;text-transform:uppercase">miles</div>
       </div>
       <div class="live-grid">
         <div class="live-cell"><div class="v">${hms(secs)}</div><div class="l">TIME</div></div>
-        <div class="live-cell"><div class="v">${Z.formatPace(pace)}</div><div class="l">PACE /KM</div></div>
+        <div class="live-cell"><div class="v">${Z.formatPace(pace)}</div><div class="l">PACE /MI</div></div>
         <div class="live-cell"><div class="v">${burn.netKcal}</div><div class="l">KCAL</div></div>
       </div>
-      ${live.type === 'HIKE' ? `<div class="live-cell"><div class="v">${Math.round(live.elevationGainMetres)} m</div><div class="l">ELEVATION GAIN</div></div>` : ''}
+      ${live.type === 'HIKE' ? `<div class="live-cell"><div class="v">${Z.formatFeet(live.elevationGainMetres)}</div><div class="l">CLIMB</div></div>` : ''}
       <div class="btn-row">
         <button class="btn ghost" data-act="live-pause">${live.paused ? 'Resume' : 'Pause'}</button>
         <button class="btn" data-act="live-finish">Finish</button>
@@ -1446,8 +1536,8 @@ function moveView(d) {
     <div class="kicker">HISTORY</div>
     ${recent.length ? `<div class="list">${recent.map(s => `
       <div class="item">
-        <div class="col"><span class="name">${esc(Z.ACTIVITY_LABEL[s.type])} · ${(s.distanceMetres / 1000).toFixed(2)} km</span>
-        <span class="meta">${esc(s.date)} · ${hms(s.durationSeconds)} · ${Z.formatPace(Z.paceSecondsPerKm(s.distanceMetres, s.durationSeconds))}/km</span></div>
+        <div class="col"><div class="name">${esc(Z.ACTIVITY_LABEL[s.type])}${s.distanceMetres ? ' · ' + Z.formatMiles(s.distanceMetres) : ''}</div>
+        <div class="meta">${esc(s.date)} · ${hms(s.durationSeconds)}${s.distanceMetres ? ' · ' + Z.formatPace(Z.paceSecondsPerMile(s.distanceMetres, s.durationSeconds)) + '/mi' : ''}</div></div>
         <div class="row" style="gap:8px"><span class="val">${s.netKcal} kcal</span>
         <button class="x" data-act="del-session" data-id="${s.id}" aria-label="Remove">×</button></div>
       </div>`).join('')}</div>`
@@ -1459,7 +1549,7 @@ function nextLiftHint(exercise) {
   if (!history.length) return '';
   const last = history[history.length - 1];
   const next = Z.nextStrengthPrescription(last.sets, [8, 12], 0, /squat|deadlift|lunge|leg/i.test(exercise));
-  return next ? `→ ${next.weightKg}kg` : '';
+  return next ? `next ${Math.round(Z.kgToLb(next.weightKg) / 5) * 5} lb` : '';
 }
 
 // ---- Plan ----------------------------------------------------------------
@@ -1474,8 +1564,8 @@ function planView(d) {
     <div><h1 class="screen">Plan</h1><p class="sub">You choose the shape of the week. Zephyr sets the load.</p></div>
 
     ${a && a.planned > 0 ? `<div class="card">
-      <div class="row"><span class="kicker">THIS WEEK</span><span class="val" style="color:var(--mint);font-weight:700">${a.completed}/${a.planned}</span></div>
-      ${bar('ADHERENCE', `${a.percent}%`, a.percent / 100, a.percent >= 70 ? 'var(--mint)' : 'var(--amber)')}
+      <div class="row"><span class="kicker">THIS WEEK</span><span class="val" style="color:var(--green);font-weight:700">${a.completed}/${a.planned}</span></div>
+      ${bar('ADHERENCE', `${a.percent}%`, a.percent / 100, a.percent >= 70 ? 'var(--green)' : 'var(--warn)')}
     </div>` : ''}
 
     <div class="list">
@@ -1487,7 +1577,7 @@ function planView(d) {
             <span class="name">${done ? '✓ ' : ''}${esc(p.headline)}</span>
             <span class="meta">${DAY_NAMES[Z.isoDayOfWeek(p.date) - 1]} ${esc(Z.formatClock(p.slot.timeOfDay))}${p.isDeload ? ' · deload week' : ''}</span>
           </div>
-          <span class="val" style="color:${done ? 'var(--mint)' : past ? 'var(--amber)' : 'var(--t3)'};font-size:11px">
+          <span class="val" style="color:${done ? 'var(--green)' : past ? 'var(--warn)' : 'var(--t3)'};font-size:11px">
             ${done ? 'done' : past ? 'missed' : ''}</span>
         </div>`;
       }).join('')}
@@ -1501,7 +1591,7 @@ function planView(d) {
         const slot = S.plan.find(s => s.dayOfWeek === dow && s.enabled);
         return `<button class="pill block" data-act="edit-day" data-dow="${dow}">
           <b style="display:inline-block;width:42px">${name}</b>
-          <span style="color:${slot ? 'var(--mint)' : 'var(--t3)'}">${slot ? esc(Z.ACTIVITY_LABEL[slot.type]) + ' · ' + esc(Z.formatClock(slot.timeOfDay)) : 'Rest'}</span>
+          <span style="color:${slot ? 'var(--green)' : 'var(--t3)'}">${slot ? esc(Z.ACTIVITY_LABEL[slot.type]) + ' · ' + esc(Z.formatClock(slot.timeOfDay)) : 'Rest'}</span>
         </button>`;
       }).join('')}
     </div>
@@ -1527,7 +1617,7 @@ function progressView(d) {
         <span class="legend-key"><span class="legend-swatch" style="background:var(--mint)"></span>trend</span>
         <span class="legend-key"><span class="legend-swatch" style="background:var(--violet)"></span>goal</span>
       </div>
-      ${goalDate ? `<p class="tiny">At this rate you reach ${(+S.profile.goalWeightKg).toFixed(1)} kg around <b style="color:var(--t1)">${esc(prettyDate(goalDate))}</b>.</p>`
+      ${goalDate ? `<p class="tiny">At this rate you hit ${Z.kgToLb(+S.profile.goalWeightKg).toFixed(0)} lb around <b style="color:var(--ink)">${esc(prettyDate(goalDate))}</b>.</p>`
         : `<p class="tiny">Not enough consistent movement yet to project a goal date.</p>`}
     </div>` : `<div class="empty">Log a few weigh-ins and the trend line appears here.</div>`}
 
@@ -1537,7 +1627,7 @@ function progressView(d) {
         ${statLine('Average intake', `${Z.fmt(w.averageIntakeKcal)} kcal`, `target ${Z.fmt(d.target.targetKcal)}`)}
         ${statLine('Average burn', `${Z.fmt(w.averageBurnKcal)} kcal`, 'from logged sessions')}
         ${statLine('Adherence', `${w.adherencePercent}%`, 'days inside the plan')}
-        ${statLine('Projected', `${w.projectedWeeklyKg >= 0 ? '+' : ''}${w.projectedWeeklyKg.toFixed(2)} kg`, 'per week, from how you ate')}`}
+        ${statLine('Projected', Z.formatRateLb(w.projectedWeeklyKg), 'a week, from how you ate')}`}
     </div>
 
     <div class="card">
@@ -1553,7 +1643,7 @@ function progressView(d) {
       <div class="kicker">STREAK</div>
       <div class="row">
         <div class="col"><span style="font-size:30px;font-weight:700;font-variant-numeric:tabular-nums">${d.streak.current}</span><span class="tiny">current</span></div>
-        <div class="col" style="text-align:right"><span style="font-size:18px;font-weight:650;color:var(--t2)">${d.streak.longest}</span><span class="tiny">longest</span></div>
+        <div class="col" style="text-align:right"><span style="font-size:18px;font-weight:650;color:var(--muted)">${d.streak.longest}</span><span class="tiny">longest</span></div>
       </div>
       <p class="tiny">A day counts if you logged your food and either stayed in budget, hit your steps, or trained. Showing up counts.</p>
     </div>`;
@@ -1586,97 +1676,233 @@ function weightChart(trend, goalKg) {
 
 // ---- Onboarding ----------------------------------------------------------
 
-function onboardingView(d) {
-  const p = S.profile;
-  const step = S.onboardStep;
-  const complete1 = p.birthYear >= 1920 && p.birthYear <= 2015 && p.heightCm >= 100 && p.heightCm <= 250 && p.weightKg >= 30 && p.weightKg <= 300;
-  const complete2 = p.goalWeightKg >= 30 && p.goalWeightKg <= 300;
+/**
+ * One question per screen.
+ *
+ * A single long form is faster to build and worse to use: it shows everything being asked of you at
+ * once, which reads as a chore. Asking one thing at a time makes each answer feel like progress,
+ * and it gives every step room for a real question and a real reason.
+ *
+ * The last screen is the payoff — the number, revealed. Everything before it is earning that.
+ */
+const OB_STEPS = ['intro', 'sex', 'age', 'height', 'weight', 'goal', 'pace', 'activity', 'reveal'];
 
-  let body;
-  if (step === 0) {
-    body = `
-      <div style="font-size:42px;font-weight:700;color:var(--mint);letter-spacing:-.035em">Zephyr</div>
-      <div style="font-size:21px;font-weight:650;letter-spacing:-.02em">One number a day.</div>
-      <p class="muted" style="line-height:1.55">Everything you eat subtracts from it. Every run, hike, lift and step adds back.
-      That single number is the whole game, and Zephyr keeps it honest — it learns what your body
-      actually burns instead of trusting a formula.</p>
-      <p class="tiny">Zephyr gives general fitness and nutrition guidance. It isn't medical advice — if you
-      have a health condition, talk to a doctor before making big changes.</p>`;
-  } else if (step === 1) {
-    body = `
-      <h1 class="screen">About you</h1>
-      <p class="sub">These set your baseline. Zephyr corrects itself from real data later.</p>
-      <div class="field"><label>SEX</label><div class="pills">
-        ${[['MALE', 'Male'], ['FEMALE', 'Female'], ['UNSPECIFIED', 'Rather not say']].map(([v, l]) =>
-          `<button class="pill ${p.sex === v ? 'on' : ''}" data-act="set" data-key="sex" data-value="${v}">${l}</button>`).join('')}
-      </div></div>
-      <div class="field"><label>BIRTH YEAR</label><input type="number" inputmode="numeric" data-bind="birthYear" value="${esc(p.birthYear)}" placeholder="1992"></div>
-      <div class="field-row">
-        <div class="field"><label>HEIGHT (CM)</label><input type="number" inputmode="decimal" data-bind="heightCm" value="${esc(p.heightCm)}" placeholder="183"></div>
-        <div class="field"><label>WEIGHT (KG)</label><input type="number" inputmode="decimal" data-bind="weightKg" value="${esc(p.weightKg)}" placeholder="92"></div>
-      </div>
-      <p class="tiny">Only the year — age in years is all the equation uses.</p>`;
-  } else if (step === 2) {
-    body = `
-      <h1 class="screen">Your goal</h1>
-      <p class="sub">Pick a pace you can live with. Zephyr won't let you set an unsafe one.</p>
-      <div class="field"><label>GOAL WEIGHT (KG)</label><input type="number" inputmode="decimal" data-bind="goalWeightKg" value="${esc(p.goalWeightKg)}" placeholder="82"></div>
-      <div class="field"><label>PACE</label><div class="pills" style="flex-direction:column">
-        ${Object.values(Z.GoalPace).map(g =>
-          `<button class="pill block ${p.goalPace === g.name ? 'on' : ''}" data-act="set" data-key="goalPace" data-value="${g.name}">${esc(g.label)}</button>`).join('')}
-      </div></div>
-      <div class="field"><label>DAY-TO-DAY ACTIVITY</label>
-        <p class="tiny" style="margin:0 0 4px">Not counting workouts — Zephyr adds those from what you log.</p>
-        <div class="pills" style="flex-direction:column">
-        ${Object.values(Z.ActivityLevel).map(a =>
-          `<button class="pill block ${p.activityLevel === a.name ? 'on' : ''}" data-act="set" data-key="activityLevel" data-value="${a.name}">${esc(a.label)}</button>`).join('')}
-      </div></div>`;
-  } else {
-    const preview = previewPlan();
-    body = `
-      <h1 class="screen">Your plan</h1>
-      <p class="sub">Here's how Zephyr got to your daily number.</p>
-      ${preview ? `
-        <div class="card">
-          ${statLine('Maintenance', `${Z.fmt(preview.target.maintenanceKcal)} kcal`, 'what you burn on an average day')}
-          ${statLine('Daily target', `${Z.fmt(preview.target.targetKcal)} kcal`,
-            preview.target.dailyDeltaKcal < 0 ? `${Z.fmt(-preview.target.dailyDeltaKcal)} kcal below maintenance`
-              : preview.target.dailyDeltaKcal > 0 ? `${Z.fmt(preview.target.dailyDeltaKcal)} kcal above maintenance` : 'eating at maintenance')}
-          ${statLine('Protein', `${preview.macros.proteinG} g`, 'protects muscle while you lose fat')}
-          ${statLine('Carbs / fat', `${preview.macros.carbsG} g / ${preview.macros.fatG} g`, 'fuel for your training')}
-        </div>
-        ${preview.target.adjustment !== Z.TargetAdjustment.NONE ? `<div class="callout">${esc(clampCopy(preview.target))}</div>` : ''}
-      ` : `<p class="muted">Fill in the previous steps to see your plan.</p>`}`;
+function obDraft() {
+  S.ob = S.ob ?? { sex: '', age: '', ft: '', inch: '', lb: '', goalLb: '', pace: '', activity: '' };
+  return S.ob;
+}
+
+function obStepName() { return OB_STEPS[Math.min(S.onboardStep, OB_STEPS.length - 1)]; }
+
+/** Whether the current screen has what it needs to move on. */
+function obReady() {
+  const o = obDraft();
+  switch (obStepName()) {
+    case 'sex': return !!o.sex;
+    case 'age': return +o.age >= 13 && +o.age <= 100;
+    case 'height': return +o.ft >= 3 && +o.ft <= 8 && +o.inch >= 0 && +o.inch <= 11;
+    case 'weight': return +o.lb >= 70 && +o.lb <= 660;
+    case 'goal': return +o.goalLb >= 70 && +o.goalLb <= 660;
+    case 'pace': return !!o.pace;
+    case 'activity': return !!o.activity;
+    default: return true;
   }
+}
 
-  const canNext = step === 1 ? complete1 : step === 2 ? complete2 : true;
+function obProfile() {
+  const o = obDraft();
+  if (!(o.age && o.ft !== '' && o.lb && o.goalLb)) return null;
+  return {
+    sex: o.sex || 'MALE',
+    heightCm: Z.ftInToCm(+o.ft, +(o.inch || 0)),
+    weightKg: Z.lbToKg(+o.lb),
+    goalWeightKg: Z.lbToKg(+o.goalLb),
+    ageYears: +o.age,
+    activityLevel: o.activity || 'LIGHT',
+    goalPace: o.pace || 'LOSE_STEADY',
+  };
+}
+
+function obPlan() {
+  const p = obProfile();
+  if (!p) return null;
+  const bmrKcal = Z.bmr(p.weightKg, p.heightCm, p.ageYears, p.sex);
+  const target = Z.calorieTarget(bmrKcal * Z.ActivityLevel[p.activityLevel].multiplier, bmrKcal,
+    Z.GoalPace[p.goalPace].kgPerWeek, p.sex);
+  const m = Z.macros(target.targetKcal, p.goalWeightKg, Z.GoalPace[p.goalPace].kgPerWeek < 0);
+  return { target, macros: m, profile: p };
+}
+
+function onboardingView() {
+  const o = obDraft();
+  const step = obStepName();
+  const index = OB_STEPS.indexOf(step);
+  const progress = index / (OB_STEPS.length - 1);
+
+  const body = {
+    intro: obIntro,
+    sex: () => obChoice('First — who am I working with?', 'It changes the maths, nothing else.', 'sex', [
+      ['MALE', 'Man', ''], ['FEMALE', 'Woman', ''], ['UNSPECIFIED', 'Rather not say', 'Zephyr splits the difference'],
+    ], o.sex),
+    age: () => obNumber('How old are you?', 'Your body burns differently at 22 than at 42.', [
+      { key: 'age', label: 'Years', placeholder: '28', suffix: '' },
+    ]),
+    height: () => obNumber('How tall are you?', 'The single biggest input into what you burn all day.', [
+      { key: 'ft', label: 'Feet', placeholder: '5', suffix: 'ft' },
+      { key: 'inch', label: 'Inches', placeholder: '11', suffix: 'in' },
+    ]),
+    weight: () => obNumber('What do you weigh right now?', "No judgement — it's just the starting line.", [
+      { key: 'lb', label: 'Pounds', placeholder: '187', suffix: 'lb' },
+    ]),
+    goal: () => obGoalWeight(o),
+    pace: () => obChoice('How fast do you want this?', "Faster isn't better. Faster is just faster.",
+      'pace', Object.values(Z.GoalPace).filter(g => g.name !== 'GAIN_SLOW')
+        .map(g => [g.name, g.label, g.blurb]), o.pace),
+    activity: () => obChoice('Before any workouts — how much do you move?',
+      "Just your normal day. Zephyr adds training on top from what you log.",
+      'activity', Object.values(Z.ActivityLevel).map(a => [a.name, a.label, '']), o.activity),
+    reveal: obReveal,
+  }[step]();
+
+  const label = step === 'intro' ? 'Get started' : step === 'reveal' ? "Let's go" : 'Continue';
+
   return `
-    <div style="display:flex;flex-direction:column;gap:16px;min-height:calc(100dvh - 60px);padding-top:20px">
-      ${body}
+    <div class="ob-progress"><div class="ob-progress-fill" style="width:${(progress * 100).toFixed(0)}%"></div></div>
+    <div class="ob" key="${step}">
+      <div class="ob-screen">${body}</div>
       <div class="grow"></div>
-      <div class="row" style="padding-bottom:20px">
-        ${step > 0 ? `<button class="btn ghost" data-act="ob-back">Back</button>` : '<span></span>'}
-        <button class="btn" data-act="ob-next" ${canNext ? '' : 'disabled'}>${step >= 3 ? 'Start' : 'Continue'}</button>
+      <div class="ob-actions">
+        ${index > 0 ? `<button class="icon-btn" data-act="ob-back" aria-label="Back">${icon('back')}</button>` : '<span></span>'}
+        <button class="btn accent grow" data-act="ob-next" ${obReady() ? '' : 'disabled'}>${label}</button>
       </div>
     </div>`;
 }
 
-function previewPlan() {
-  const p = S.profile;
-  if (!(p.birthYear && p.heightCm && p.weightKg && p.goalWeightKg)) return null;
-  const date = todayISO();
-  const bmrKcal = Z.bmr(+p.weightKg, +p.heightCm, Z.ageOn(+p.birthYear, date), p.sex);
-  const tdee = bmrKcal * Z.ActivityLevel[p.activityLevel].multiplier;
-  const target = Z.calorieTarget(tdee, bmrKcal, Z.GoalPace[p.goalPace].kgPerWeek, p.sex);
-  const macros = Z.macros(target.targetKcal, +p.goalWeightKg, Z.GoalPace[p.goalPace].kgPerWeek < 0);
-  return { target, macros };
+function obIntro() {
+  return `<div class="ob-stagger">
+    <div class="ob-brand">Zephyr</div>
+    <div class="ob-h">Look the way<br>you want to look.</div>
+    <p class="ob-p">Eating, running, hiking, lifting — one number a day that tells you
+    whether today counted. No spreadsheets. No guilt. Just the number.</p>
+    <div class="ob-promise">
+      <div class="ob-promise-row"><span class="dot-v"></span><span>It learns what <b>your</b> body burns, not a formula's guess</span></div>
+      <div class="ob-promise-row"><span class="dot-o"></span><span>Protein set so what you lose is fat, <b>not muscle</b></span></div>
+      <div class="ob-promise-row"><span class="dot-p"></span><span>Chases you when it matters, <b>shuts up when it doesn't</b></span></div>
+    </div>
+    <p class="ob-fine">General fitness guidance, not medical advice. Talk to a doctor
+    before big changes if you have a health condition.</p>
+  </div>`;
+}
+
+function obChoice(title, sub, key, options, current) {
+  return `<div class="ob-stagger">
+    <div class="ob-h">${esc(title)}</div>
+    <p class="ob-p">${esc(sub)}</p>
+    <div class="choices">
+      ${options.map(([value, label, blurb]) => `
+        <button class="choice ${current === value ? 'on' : ''}" data-act="ob-set" data-key="${key}" data-value="${value}">
+          <span class="choice-text">
+            <span class="choice-label">${esc(label)}</span>
+            ${blurb ? `<span class="choice-blurb">${esc(blurb)}</span>` : ''}
+          </span>
+          <span class="choice-tick">${icon('check')}</span>
+        </button>`).join('')}
+    </div>
+  </div>`;
+}
+
+function obNumber(title, sub, fields) {
+  const o = obDraft();
+  return `<div class="ob-stagger">
+    <div class="ob-h">${esc(title)}</div>
+    <p class="ob-p">${esc(sub)}</p>
+    <div class="field-row big-fields">
+      ${fields.map(f => `
+        <div class="field">
+          <label>${esc(f.label)}</label>
+          <input type="number" inputmode="numeric" data-bind-ob="${f.key}"
+            value="${esc(o[f.key] ?? '')}" placeholder="${esc(f.placeholder)}" />
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function obGoalWeight(o) {
+  const now = +o.lb || 0;
+  const goal = +o.goalLb || 0;
+  const diff = now && goal ? now - goal : 0;
+
+  return `<div class="ob-stagger">
+    <div class="ob-h">Where do you want to be?</div>
+    <p class="ob-p">Pick the number you actually want. Zephyr will tell you honestly if it's too fast.</p>
+    <div class="field big-fields">
+      <label>Goal weight</label>
+      <input type="number" inputmode="numeric" data-bind-ob="goalLb" value="${esc(o.goalLb ?? '')}" placeholder="${now ? Math.round(now - 15) : '170'}" />
+    </div>
+    ${diff > 0 ? `<div class="callout good"><b>${diff.toFixed(0)} lb to go.</b> That's the whole job — and it's a smaller number than it feels like right now.</div>`
+      : diff < 0 ? `<div class="callout good"><b>${Math.abs(diff).toFixed(0)} lb to put on.</b> Zephyr will make sure it's the good kind.</div>` : ''}
+  </div>`;
+}
+
+/**
+ * The payoff screen. Everything before this was earning the right to show a number, so it gets the
+ * full-width treatment and counts up rather than simply appearing.
+ */
+function obReveal() {
+  const plan = obPlan();
+  if (!plan) return `<div class="ob-h">Fill in the earlier steps and your plan appears here.</div>`;
+
+  const { target, macros, profile } = plan;
+  const lbPerWeek = Math.abs(Z.kgToLb(target.effectiveKgPerWeek));
+  const weeks = Math.abs(Z.kgToLb(profile.weightKg - profile.goalWeightKg)) / (lbPerWeek || 1);
+
+  return `<div class="ob-stagger">
+    <div class="kicker">Your daily number</div>
+    <div class="reveal-number" data-countup="${target.targetKcal}">0</div>
+    <div class="reveal-unit">calories a day</div>
+
+    <div class="reveal-grid">
+      <div class="tile t-green"><div class="v">${macros.proteinG}g</div><div class="l">Protein — the muscle-saver</div></div>
+      <div class="tile t-orange"><div class="v">${macros.carbsG}g</div><div class="l">Carbs — your fuel</div></div>
+      <div class="tile t-sky"><div class="v">${macros.fatG}g</div><div class="l">Fat — keeps you sane</div></div>
+      <div class="tile t-violet"><div class="v">${Z.fmt(target.maintenanceKcal)}</div><div class="l">What you burn doing nothing</div></div>
+    </div>
+
+    ${target.adjustment !== Z.TargetAdjustment.NONE
+      ? `<div class="callout">${esc(clampCopy(target))}</div>`
+      : weeks > 0 && isFinite(weeks) && weeks < 200
+        ? `<div class="callout good">Hit this most days and you're there in about
+           <b>${Math.round(weeks)} weeks</b> — losing ${lbPerWeek.toFixed(1)} lb a week.
+           You'll notice it in the mirror before the scale catches up.</div>` : ''}
+  </div>`;
 }
 
 function clampCopy(target) {
   if (target.adjustment === Z.TargetAdjustment.CAPPED_TO_PERCENTAGE) {
-    return `That pace needed a steeper deficit than is safe, so Zephyr eased it to ${Math.abs(target.effectiveKgPerWeek).toFixed(2)} kg per week. Faster than this costs muscle, which is the opposite of the goal.`;
+    return `That pace needed a bigger cut than is safe, so Zephyr eased it to ${Math.abs(Z.kgToLb(target.effectiveKgPerWeek)).toFixed(1)} lb a week. Going faster costs muscle — which is the opposite of looking better.`;
   }
-  return 'Zephyr raised your target to keep it above what your body needs at rest. Eating below that slows your metabolism and costs muscle.';
+  return 'Zephyr raised your target to keep it above what your body burns at rest. Eating under that slows your metabolism and eats muscle.';
+}
+
+/** Counts the hero number up on the reveal screen. A number that lands feels earned. */
+function runCountUps() {
+  app.querySelectorAll('[data-countup]').forEach(node => {
+    const end = +node.dataset.countup;
+    if (!end) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      node.textContent = Z.fmt(end);
+      return;
+    }
+    const started = performance.now();
+    const duration = 900;
+    const tick = t => {
+      const p = Math.min((t - started) / duration, 1);
+      // Ease-out cubic: fast at first, settling into the final figure.
+      node.textContent = Z.fmt(Math.round(end * (1 - Math.pow(1 - p, 3))));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 
 // ---- Sheets --------------------------------------------------------------
@@ -1690,7 +1916,8 @@ function sheetView(d) {
 }
 
 function sheetHead(title) {
-  return `<div class="sheet-head"><h2>${esc(title)}</h2>
+  return `<div class="grabber"></div>
+    <div class="sheet-head"><h2>${esc(title)}</h2>
     <button class="icon-btn" data-act="close" aria-label="Close">${icon('x')}</button></div>`;
 }
 
@@ -1735,12 +1962,12 @@ function autoSlot() {
 }
 
 function weighSheet(d) {
-  const last = S.weights.length ? S.weights[S.weights.length - 1].weightKg : S.profile.weightKg;
+  const lastKg = S.weights.length ? S.weights[S.weights.length - 1].weightKg : +S.profile.weightKg;
   return `${sheetHead('Log weight')}
-    <p class="tiny">Weigh yourself at the same time each day — first thing, after the bathroom, before eating. Zephyr smooths the noise out anyway, but consistency makes the trend honest sooner.</p>
-    <div class="field"><label>WEIGHT (KG)</label>
-      <input type="number" inputmode="decimal" step="0.1" data-bind-sheet="weight" value="${esc(sheet.weight ?? last)}"></div>
-    <button class="btn wide" data-act="save-weight">Save</button>`;
+    <p class="tiny">Same time every day — first thing, after the bathroom, before you eat. The daily number bounces around on water alone; Zephyr smooths it, but being consistent makes the trend honest sooner.</p>
+    <div class="field big-fields"><label>Weight (lb)</label>
+      <input type="number" inputmode="decimal" step="0.1" data-bind-sheet="weight" value="${esc(sheet.weight ?? Z.kgToLb(lastKg).toFixed(1))}"></div>
+    <button class="btn accent wide" data-act="save-weight">Save</button>`;
 }
 
 function coachSheet(d) {
@@ -1766,7 +1993,7 @@ function coachSheet(d) {
 }
 
 function notifCard(n) {
-  const colour = { PLAN: 'var(--mint)', SESSION: 'var(--sky)', MOVEMENT: 'var(--violet)', FOOD: 'var(--t2)', STREAK: 'var(--amber)', CELEBRATION: 'var(--mint)' }[n.category.id];
+  const colour = { PLAN: 'var(--violet)', SESSION: 'var(--sky)', MOVEMENT: 'var(--sky)', FOOD: 'var(--green)', STREAK: 'var(--pink)', CELEBRATION: 'var(--green)' }[n.category.id];
   return `<div class="notif">
     <div class="top"><span class="dot" style="background:${colour}"></span><span>ZEPHYR · ${esc(n.category.channelName.toUpperCase())}</span></div>
     <div class="t">${esc(n.title)}</div>
@@ -1804,7 +2031,7 @@ function settingsSheet(d) {
     ${(() => {
       const suggestion = Z.suggestStepGoal(Object.entries(S.steps).map(([date, steps]) => ({ date, steps })), S.stepGoal);
       return suggestion.baselineMedian ? `<p class="tiny">${esc(suggestion.reason)}${suggestion.goal !== S.stepGoal
-        ? ` <button class="notif-act" style="background:none;border:0;color:var(--mint);font-weight:650;cursor:pointer;font-family:inherit;font-size:11px" data-act="accept-goal" data-goal="${suggestion.goal}">Use ${Z.fmt(suggestion.goal)}</button>` : ''}</p>` : '';
+        ? ` <button class="notif-act" style="background:none;border:0;color:var(--green);font-weight:650;cursor:pointer;font-family:inherit;font-size:11px" data-act="accept-goal" data-goal="${suggestion.goal}">Use ${Z.fmt(suggestion.goal)}</button>` : ''}</p>` : '';
     })()}
 
     <div class="divider"></div>
@@ -1851,12 +2078,12 @@ function manualSheet(d) {
     <div class="pills">${['RUN', 'HIKE', 'WALK', 'CYCLE'].map(t =>
       `<button class="pill ${(sheet.type ?? 'RUN') === t ? 'on' : ''}" data-act="set-type" data-type="${t}">${Z.ACTIVITY_LABEL[t]}</button>`).join('')}</div>
     <div class="field-row">
-      <div class="field"><label>DISTANCE (KM)</label><input type="number" inputmode="decimal" step="0.1" data-bind-sheet="km" value="${esc(sheet.km ?? '')}" placeholder="8"></div>
-      <div class="field"><label>MINUTES</label><input type="number" inputmode="numeric" data-bind-sheet="min" value="${esc(sheet.min ?? '')}" placeholder="45"></div>
+      <div class="field"><label>Distance (mi)</label><input type="number" inputmode="decimal" step="0.1" data-bind-sheet="km" value="${esc(sheet.km ?? '')}" placeholder="5"></div>
+      <div class="field"><label>Minutes</label><input type="number" inputmode="numeric" data-bind-sheet="min" value="${esc(sheet.min ?? '')}" placeholder="45"></div>
     </div>
-    <div class="field"><label>ELEVATION GAIN (M) — OPTIONAL</label><input type="number" inputmode="numeric" data-bind-sheet="elev" value="${esc(sheet.elev ?? '')}" placeholder="120"></div>
+    <div class="field"><label>Climb (ft) — optional</label><input type="number" inputmode="numeric" data-bind-sheet="elev" value="${esc(sheet.elev ?? '')}" placeholder="400"></div>
     ${sheet.km && sheet.min ? (() => {
-      const burn = Z.activityBurn(sheet.type ?? 'RUN', +sheet.min * 60, +sheet.km * 1000, +(sheet.elev || 0), +S.profile.weightKg);
+      const burn = Z.activityBurn(sheet.type ?? 'RUN', +sheet.min * 60, +sheet.km * Z.M_PER_MILE, +(sheet.elev || 0) / Z.FT_PER_M, +S.profile.weightKg);
       return `<div class="callout mint">${burn.netKcal} kcal added to today's budget.
       That's net of the ${burn.restingKcal} kcal you'd have burned resting anyway — counting the gross
       figure would hand back calories you never earned.</div>`;
@@ -1899,19 +2126,24 @@ function daySheet(d) {
 
 // ---- Small view helpers --------------------------------------------------
 
+/**
+ * The hero ring, drawn white-on-colour since it now sits on the violet card.
+ *
+ * Progress stops at full rather than lapping: a ring that starts a second lap makes overeating look
+ * like an achievement. The inner ring is steps, so one glance covers both.
+ */
 function ring(calorieFraction, stepFraction, over, centerHtml) {
-  const R1 = 107, R2 = 88;
+  const R1 = 98, R2 = 79;
   const c1 = 2 * Math.PI * R1, c2 = 2 * Math.PI * R2;
   const f1 = Z.clamp(calorieFraction, 0, 1), f2 = Z.clamp(stepFraction, 0, 1);
-  return `<div class="ring-wrap"><svg viewBox="0 0 232 232" aria-hidden="true">
-      <defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#00E5A0"/><stop offset="1" stop-color="#4FC3F7"/></linearGradient></defs>
-      <circle cx="116" cy="116" r="${R1}" fill="none" stroke="#2C3846" stroke-opacity=".45" stroke-width="18"/>
-      <circle cx="116" cy="116" r="${R1}" fill="none" stroke="${over ? '#FFB454' : 'url(#ringGrad)'}" stroke-width="18"
-        stroke-linecap="round" stroke-dasharray="${(c1 * f1).toFixed(1)} ${c1.toFixed(1)}" transform="rotate(-90 116 116)"/>
-      <circle cx="116" cy="116" r="${R2}" fill="none" stroke="#7C6BFF" stroke-opacity=".18" stroke-width="8"/>
-      <circle cx="116" cy="116" r="${R2}" fill="none" stroke="#7C6BFF" stroke-width="8"
-        stroke-linecap="round" stroke-dasharray="${(c2 * f2).toFixed(1)} ${c2.toFixed(1)}" transform="rotate(-90 116 116)"/>
+
+  return `<div class="ring-wrap"><svg viewBox="0 0 218 218" aria-hidden="true">
+      <circle cx="109" cy="109" r="${R1}" fill="none" stroke="#fff" stroke-opacity=".22" stroke-width="17"/>
+      <circle cx="109" cy="109" r="${R1}" fill="none" stroke="#fff" stroke-width="17"
+        stroke-linecap="round" stroke-dasharray="${(c1 * f1).toFixed(1)} ${c1.toFixed(1)}" transform="rotate(-90 109 109)"/>
+      <circle cx="109" cy="109" r="${R2}" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="7"/>
+      <circle cx="109" cy="109" r="${R2}" fill="none" stroke="${over ? '#FFE0AE' : '#B9FFE6'}" stroke-width="7"
+        stroke-linecap="round" stroke-dasharray="${(c2 * f2).toFixed(1)} ${c2.toFixed(1)}" transform="rotate(-90 109 109)"/>
     </svg><div class="ring-center">${centerHtml}</div></div>`;
 }
 
@@ -1920,8 +2152,19 @@ function bar(name, value, fraction, colour) {
     <div class="track"><div class="fill" style="width:${(Z.clamp(fraction, 0, 1) * 100).toFixed(1)}%;background:${colour}"></div></div></div>`;
 }
 
-function chip(ic, colour, value, label) {
-  return `<div class="chip-card">${icon(ic, colour)}<span class="chip-v">${Z.fmt(value)}</span><span class="chip-l">${esc(label)}</span></div>`;
+/**
+ * A colour-blocked stat tile. The hue carries the meaning — sky is always steps, green always
+ * protein — so after a day or two the screen can be read without reading any labels.
+ */
+function tile(tone, ic, value, label, fraction = null) {
+  return `<div class="tile ${tone}">
+    <div class="tile-top">
+      <span class="tile-icon">${icon(ic)}</span>
+      ${fraction != null ? `<span style="font-size:12px;font-weight:750;opacity:.7">${Math.round(Z.clamp(fraction, 0, 1) * 100)}%</span>` : ''}
+    </div>
+    <div class="v">${esc(value)}</div>
+    <div class="l">${esc(label)}</div>
+  </div>`;
 }
 
 function hms(totalSeconds) {
@@ -1945,8 +2188,11 @@ const ICONS = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2 2 2 0 11-4 0 1.7 1.7 0 00-2.9-1.2l-.1.1a2 2 0 11-2.8-2.8l.1-.1A1.7 1.7 0 004 15a2 2 0 110-4 1.7 1.7 0 001.2-2.9l-.1-.1a2 2 0 112.8-2.8l.1.1A1.7 1.7 0 0011 4a2 2 0 114 0 1.7 1.7 0 002.9 1.2l.1-.1a2 2 0 112.8 2.8l-.1.1A1.7 1.7 0 0020 11a2 2 0 110 4z"/>',
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   x: '<path d="M18 6L6 18M6 6l12 12"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>',
   flame: '<path d="M12 2s5 5 5 9a5 5 0 01-10 0c0-2 1-3.5 1-3.5S9 11 11 11s1-9 1-9z"/>',
   bolt: '<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>',
+  leaf: '<path d="M11 20A7 7 0 019 13c0-5 4-9 11-9 0 8-3 12-9 12z"/><path d="M5 21c0-4 2-7 5-8"/>',
 };
 
 function icon(name, colour = 'currentColor') {
@@ -1960,8 +2206,17 @@ function icon(name, colour = 'currentColor') {
 function wire(d) {
   app.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; save(); render(); });
 
-  app.querySelectorAll('[data-bind]').forEach(input => {
-    input.oninput = () => { S.profile[input.dataset.bind] = input.value; save(); softRefreshOnboarding(); };
+  app.querySelectorAll('[data-bind-ob]').forEach(input => {
+    input.oninput = () => {
+      obDraft()[input.dataset.bindOb] = input.value;
+      save();
+      const next = app.querySelector('[data-act="ob-next"]');
+      if (next) next.disabled = !obReady();
+    };
+    // Enter should advance, the way every other one-question-per-screen flow behaves.
+    input.onkeydown = e => {
+      if (e.key === 'Enter' && obReady()) { e.preventDefault(); act({ act: 'ob-next' }, null); }
+    };
   });
   app.querySelectorAll('[data-bind-sheet]').forEach(input => {
     input.oninput = () => {
@@ -1996,26 +2251,30 @@ function wire(d) {
   });
 }
 
-/** Onboarding re-renders on every keystroke would steal focus; only the button state needs updating. */
-function softRefreshOnboarding() {
-  if (S.onboarded) return;
-  const p = S.profile;
-  const ok = S.onboardStep === 1
-    ? (p.birthYear >= 1920 && p.birthYear <= 2015 && p.heightCm >= 100 && p.heightCm <= 250 && p.weightKg >= 30 && p.weightKg <= 300)
-    : S.onboardStep === 2 ? (p.goalWeightKg >= 30 && p.goalWeightKg <= 300) : true;
-  const next = app.querySelector('[data-act="ob-next"]');
-  if (next) next.disabled = !ok;
-}
+/** No longer needed: the onboarding button state is refreshed inline as you type. */
 
 function act(data, d, node) {
   const a = data.act;
 
   switch (a) {
     case 'ob-next':
-      if (S.onboardStep >= 3) { finishOnboarding(); return; }
-      S.onboardStep++; break;
+      if (obStepName() === 'reveal') { finishOnboarding(); return; }
+      S.onboardStep = Math.min(S.onboardStep + 1, OB_STEPS.length - 1);
+      break;
     case 'ob-back': S.onboardStep = Math.max(0, S.onboardStep - 1); break;
+    case 'ob-set': {
+      obDraft()[data.key] = data.value;
+      // Picking an option is an answer, so move on rather than making them reach for Continue.
+      if (obReady() && obStepName() !== 'reveal') {
+        save(); render();
+        setTimeout(() => { S.onboardStep = Math.min(S.onboardStep + 1, OB_STEPS.length - 1); save(); render(); runCountUps(); }, 260);
+        return;
+      }
+      break;
+    }
     case 'set': S.profile[data.key] = data.value; break;
+    case 'pick-date': S.selectedDate = data.date === todayISO() ? null : data.date; break;
+    case 'tab-food': S.tab = 'food'; break;
 
     case 'tab-plan': S.tab = 'plan'; break;
     case 'add-food': sheet = { kind: 'food', slot: data.slot ?? autoSlot() }; break;
@@ -2047,7 +2306,7 @@ function act(data, d, node) {
     case 'del-food': S.food = S.food.filter(f => f.id !== data.id); break;
 
     case 'save-weight': {
-      const kg = +sheet.weight;
+      const kg = Z.lbToKg(+sheet.weight);
       if (kg >= 30 && kg <= 300) {
         S.weights = S.weights.filter(w => w.date !== d.date).concat({ date: d.date, weightKg: kg }).sort((x, y) => x.date.localeCompare(y.date));
         // Targets derive from body weight, so the profile has to move with it.
@@ -2060,14 +2319,16 @@ function act(data, d, node) {
     case 'live-pause': live.paused = !live.paused; break;
     case 'live-finish': finishSession(); break;
     case 'save-manual': {
-      const km = +sheet.km, min = +sheet.min, elev = +(sheet.elev || 0);
+      const miles = +sheet.km, min = +sheet.min;
+      const metres = miles * Z.M_PER_MILE;
+      const elev = +(sheet.elev || 0) / Z.FT_PER_M;
       const type = sheet.type ?? 'RUN';
-      const burn = Z.activityBurn(type, min * 60, km * 1000, elev, +S.profile.weightKg);
+      const burn = Z.activityBurn(type, min * 60, metres, elev, +S.profile.weightKg);
       S.sessions.push({
         id: uid(), date: d.date, type, durationSeconds: min * 60,
-        distanceMetres: km * 1000, elevationGainMetres: elev, kcal: burn.kcal, netKcal: burn.netKcal,
+        distanceMetres: metres, elevationGainMetres: elev, kcal: burn.kcal, netKcal: burn.netKcal,
       });
-      addStepsFor(d.date, Math.round(km * 1000 / 0.75));
+      addStepsFor(d.date, Math.round(metres / 0.75));
       sheet = null; break;
     }
     case 'del-session': S.sessions = S.sessions.filter(s => s.id !== data.id); break;
@@ -2147,7 +2408,8 @@ function act(data, d, node) {
 
 function addFood(name, kcal, proteinG, carbsG, fatG) {
   S.food.push({
-    id: uid(), date: todayISO(), slot: sheet?.slot ?? autoSlot(),
+    // Lands on the day being viewed, so last night's dinner can be added this morning.
+    id: uid(), date: viewDate(), slot: sheet?.slot ?? autoSlot(),
     name, kcal: Math.round(kcal), proteinG, carbsG, fatG,
   });
 }
@@ -2157,8 +2419,22 @@ function addStepsFor(date, n) {
 }
 
 function finishOnboarding() {
+  const p = obProfile();
+  if (!p) return;
+
+  // The draft is imperial because that's how it was asked; the profile is metric because that's
+  // what every formula expects. This is the one place the two meet.
+  S.profile = {
+    sex: p.sex,
+    birthYear: String(now().getFullYear() - p.ageYears),
+    heightCm: p.heightCm,
+    weightKg: p.weightKg,
+    goalWeightKg: p.goalWeightKg,
+    activityLevel: p.activityLevel,
+    goalPace: p.goalPace,
+  };
   S.onboarded = true;
-  S.weights = [{ date: todayISO(), weightKg: +S.profile.weightKg }];
+  S.weights = [{ date: todayISO(), weightKg: p.weightKg }];
   S.tab = 'today';
   sheet = null;
   save();

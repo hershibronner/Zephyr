@@ -139,15 +139,18 @@ class CalorieTargetTest {
 
     @Test
     fun `a typical user gets close to the pace they actually asked for`() {
-        // The rails exist for extremes. If they fire on an ordinary 85kg man wanting 0.5 kg/week,
-        // the app is overriding its own recommendation and its warnings become background noise.
+        // The rails exist for extremes. If they fire on an ordinary 187 lb man wanting a pound a
+        // week, the app is overriding its own recommendation and its warnings become background
+        // noise. Compared against the requested rate rather than a fixed number, so changing the
+        // pace options can't quietly weaken this.
+        val requested = GoalPace.LOSE_STEADY.kgPerWeek
         val result = CalorieTarget.forProfile(
             profile(sex = Sex.MALE, weight = 85.0, pace = GoalPace.LOSE_STEADY),
             today,
         )
         assertTrue(
-            abs(result.effectiveKgPerWeek) > 0.45,
-            "watered a standard 0.5 kg/week goal down to ${result.effectiveKgPerWeek}",
+            abs(result.effectiveKgPerWeek) > abs(requested) * 0.9,
+            "watered a standard goal of $requested kg/week down to ${result.effectiveKgPerWeek}",
         )
     }
 

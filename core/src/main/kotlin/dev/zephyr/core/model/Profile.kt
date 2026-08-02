@@ -24,16 +24,28 @@ enum class ActivityLevel(val multiplier: Double, val label: String) {
 
 enum class UnitSystem { METRIC, IMPERIAL }
 
-/** Direction and speed of the goal, in kilograms of body mass per week. */
+/** Pounds in a kilogram. Zephyr computes in metric and speaks in imperial. */
+const val LB_PER_KG = 2.2046226218
+
+/**
+ * Direction and speed of the goal.
+ *
+ * The rates are whole and half pounds because that is how the people using this think about it —
+ * nobody sets out to lose 0.45 kg a week. The stored value stays metric since every formula in
+ * this package is, but the numbers were chosen so the imperial labels are exact rather than
+ * awkwardly converted.
+ */
 enum class GoalPace(val kgPerWeek: Double, val label: String) {
-    GAIN_SLOW(0.25, "Gain 0.25 kg/week"),
-    MAINTAIN(0.0, "Maintain"),
-    LOSE_EASY(-0.25, "Lose 0.25 kg/week"),
-    LOSE_STEADY(-0.5, "Lose 0.5 kg/week"),
-    LOSE_FAST(-0.75, "Lose 0.75 kg/week"),
-    LOSE_AGGRESSIVE(-1.0, "Lose 1 kg/week");
+    GAIN_SLOW(0.5 / LB_PER_KG, "Gain ½ lb a week"),
+    MAINTAIN(0.0, "Stay where I am"),
+    LOSE_EASY(-0.5 / LB_PER_KG, "Lose ½ lb a week"),
+    LOSE_STEADY(-1.0 / LB_PER_KG, "Lose 1 lb a week"),
+    LOSE_FAST(-1.5 / LB_PER_KG, "Lose 1½ lb a week"),
+    LOSE_AGGRESSIVE(-2.0 / LB_PER_KG, "Lose 2 lb a week");
 
     val isDeficit: Boolean get() = kgPerWeek < 0
+
+    val lbPerWeek: Double get() = kgPerWeek * LB_PER_KG
 }
 
 /**
