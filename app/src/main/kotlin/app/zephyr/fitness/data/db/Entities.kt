@@ -179,7 +179,9 @@ class Converters {
 
     @TypeConverter fun timeToSecondOfDay(time: LocalTime?): Int? = time?.toSecondOfDay()
 
-    @TypeConverter fun secondOfDayToTime(second: Int?): LocalTime? = second?.let(LocalTime::ofSecondOfDay)
+    @TypeConverter
+    fun secondOfDayToTime(second: Int?): LocalTime? =
+        second?.let { LocalTime.ofSecondOfDay(it.toLong()) }
 
     @TypeConverter fun slotToName(slot: MealSlot?): String? = slot?.name
 

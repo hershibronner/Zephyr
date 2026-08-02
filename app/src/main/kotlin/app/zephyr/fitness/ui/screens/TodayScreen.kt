@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.item
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,9 +35,7 @@ import app.zephyr.fitness.ui.components.MetricBar
 import app.zephyr.fitness.ui.components.ProgressRing
 import app.zephyr.fitness.ui.theme.ZephyrColors
 import dev.zephyr.core.ledger.BalanceState
-import dev.zephyr.core.steps.StepPace
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /**
  * The screen that answers "how am I doing" in under two seconds.

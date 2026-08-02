@@ -8,10 +8,8 @@ import app.zephyr.fitness.data.db.FoodLogEntity
 import app.zephyr.fitness.data.db.MealSlot
 import app.zephyr.fitness.data.db.PlannedSlotEntity
 import app.zephyr.fitness.data.db.WeightEntity
-import app.zephyr.fitness.domain.TodayRepository
 import app.zephyr.fitness.domain.TodayState
 import app.zephyr.fitness.ui.screens.OnboardingDraft
-import dev.zephyr.core.energy.BasalMetabolicRate
 import dev.zephyr.core.energy.CalorieTarget
 import dev.zephyr.core.energy.CalorieTargetResult
 import dev.zephyr.core.energy.MacroCalculator
