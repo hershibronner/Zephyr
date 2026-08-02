@@ -48,8 +48,7 @@ import kotlin.math.abs
 @Composable
 fun TodayScreen(
     state: TodayState,
-    onQuickAdd: () -> Unit,
-    onStartSession: () -> Unit,
+    onLogWeight: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -62,9 +61,11 @@ fun TodayScreen(
         item { Greeting(state) }
         item { CalorieHero(state) }
         item { MacroSection(state) }
-        item { StatChips(state, onStartSession = onStartSession) }
-        if (state.trendWeightKg != null) {
-            item { TrendCard(state) }
+        item { StatChips(state) }
+        // Weight is what feeds the trend line and the adaptive calibration, so there is always a
+        // way in: the card when there's history, an invitation when there isn't.
+        item {
+            if (state.trendWeightKg != null) TrendCard(state, onLogWeight) else WeighInPrompt(onLogWeight)
         }
         if (state.entries.isNotEmpty()) {
             item {
@@ -192,7 +193,7 @@ private fun MacroSection(state: TodayState) {
 }
 
 @Composable
-private fun StatChips(state: TodayState, onStartSession: () -> Unit) {
+private fun StatChips(state: TodayState) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
         StatChip(
             icon = { Icon(Icons.Filled.DirectionsRun, null, tint = ZephyrColors.Sky, modifier = Modifier.size(18.dp)) },
@@ -242,11 +243,36 @@ private fun StatChip(
 }
 
 @Composable
-private fun TrendCard(state: TodayState) {
+private fun WeighInPrompt(onLogWeight: () -> Unit) {
+    Card(
+        onClick = onLogWeight,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = ZephyrColors.Surface),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("WEIGH IN", style = MaterialTheme.typography.labelSmall, color = ZephyrColors.TextTertiary)
+            Text(
+                "Log today's weight",
+                style = MaterialTheme.typography.titleMedium,
+                color = ZephyrColors.TextPrimary,
+            )
+            Text(
+                "Zephyr needs a couple of weeks of weigh-ins before it can measure what you actually burn.",
+                style = MaterialTheme.typography.bodySmall,
+                color = ZephyrColors.TextSecondary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrendCard(state: TodayState, onLogWeight: () -> Unit) {
     val trend = state.trendWeightKg ?: return
     val rate = state.weeklyRateKg
 
     Card(
+        onClick = onLogWeight,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = ZephyrColors.Surface),
         shape = RoundedCornerShape(20.dp),

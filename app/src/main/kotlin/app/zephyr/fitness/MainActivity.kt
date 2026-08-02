@@ -117,8 +117,7 @@ private fun HomeScaffold(viewModel: ZephyrViewModel) {
         Box(Modifier.padding(padding)) {
             TodayScreen(
                 state = state,
-                onQuickAdd = { showQuickAdd = true },
-                onStartSession = { showWeighIn = true },
+                onLogWeight = { showWeighIn = true },
             )
         }
     }
