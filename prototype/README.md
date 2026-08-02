@@ -9,6 +9,23 @@ is committed to Compose and shipped in an APK.
 npm start
 ```
 
+Or, from anywhere, without cloning — download the repo as a ZIP, then in Terminal:
+
+```bash
+cd ~/Downloads/Zephyr-* && node prototype/serve.mjs
+```
+
+### If macOS blocks the launcher
+
+`Start Zephyr (Mac).command` is convenient but downloaded scripts are quarantined, and macOS 15
+(Sequoia) removed the old right-click -> Open bypass — the warning it shows has only an **OK**
+button, with no way through. Either use the Terminal line above, which Gatekeeper doesn't apply to,
+or clear the quarantine flag once:
+
+```bash
+xattr -d com.apple.quarantine "Start Zephyr (Mac).command"
+```
+
 That's the whole setup. No `npm install`, no dependencies, no lockfile — Node's own libraries are
 enough, and a dev server isn't worth an install step in a repo whose real build is Gradle.
 
