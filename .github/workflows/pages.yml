@@ -1,0 +1,53 @@
+name: Deploy prototype
+
+# Publishes the web prototype to GitHub Pages so it can be opened on any device — phone included —
+# without a local checkout, Node, or a running server. Updates on every push to the branch.
+
+on:
+  push:
+    branches: ["claude/fitness-goals-android-app-mn0jn9", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a deploy midway; let one finish before the next starts.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # A prototype that disagrees with the Android app is worse than none, so the parity check
+      # gates the deploy rather than running alongside it.
+      - name: Verify parity with the Android app
+        run: node prototype/parity.test.mjs
+
+      - name: Build
+        run: |
+          node prototype/build.mjs
+          mkdir -p _site
+          cp prototype/dist/zephyr.html _site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
