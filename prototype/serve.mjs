@@ -15,12 +15,15 @@ import { createServer } from 'node:http';
 import { readFileSync, existsSync, watch } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, extname, normalize } from 'node:path';
-import { networkInterfaces } from 'node:os';
+import { networkInterfaces, platform } from 'node:os';
+import { spawn } from 'node:child_process';
 import { build } from './build.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dist = join(here, 'dist');
 const PORT = Number(process.env.PORT) || 5173;
+/** How many ports to try before giving up, so a stale server elsewhere isn't a dead end. */
+const PORT_ATTEMPTS = 10;
 
 const WATCHED = ['zephyr-core.js', 'app.js', 'styles.css'];
 const MIME = {
@@ -110,21 +113,53 @@ function lanAddress() {
   return null;
 }
 
+/** Opens the default browser, so starting the server is the only step there is. */
+function openBrowser(url) {
+  if (process.env.NO_OPEN) return;
+  const command = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+  try {
+    spawn(command, [url], { stdio: 'ignore', detached: true, shell: platform() === 'win32' }).unref();
+  } catch {
+    // Headless box or no desktop session — the printed URL is enough.
+  }
+}
+
 build();
 for (const name of WATCHED) {
   watch(join(here, name), { persistent: true }, () => rebuild(name));
 }
 
-// 0.0.0.0 so a phone on the same network can reach it — testing a fitness app on a desktop only
-// tells you half of what you need to know.
-server.listen(PORT, '0.0.0.0', () => {
-  const lan = lanAddress();
-  console.log('\n  Zephyr — development server\n');
-  console.log(`  local    http://localhost:${PORT}`);
-  if (lan) console.log(`  network  http://${lan}:${PORT}   ← open this on your phone`);
-  console.log(`\n  watching ${WATCHED.join(', ')} — saves rebuild and reload every open tab.`);
-  console.log('  ctrl-c to stop\n');
-});
+function start(port, attemptsLeft) {
+  // 0.0.0.0 so a phone on the same network can reach it — testing a fitness app on a desktop only
+  // tells you half of what you need to know.
+  server.listen(port, '0.0.0.0');
+
+  server.once('error', error => {
+    if (error.code === 'EADDRINUSE' && attemptsLeft > 0) {
+      // Something else already has this port. Stepping to the next one beats an error the reader
+      // has to diagnose before they can look at the app.
+      console.log(`  port ${port} is busy, trying ${port + 1}…`);
+      server.removeAllListeners('listening');
+      start(port + 1, attemptsLeft - 1);
+      return;
+    }
+    console.error(`\n  Could not start the server: ${error.message}\n`);
+    process.exit(1);
+  });
+
+  server.once('listening', () => {
+    const lan = lanAddress();
+    const url = `http://localhost:${port}`;
+    console.log('\n  Zephyr — development server\n');
+    console.log(`  local    ${url}`);
+    if (lan) console.log(`  network  http://${lan}:${port}   <- open this on your phone`);
+    console.log(`\n  watching ${WATCHED.join(', ')} — saves rebuild and reload every open tab.`);
+    console.log('  Leave this window open. Ctrl-C, or just close it, to stop.\n');
+    openBrowser(url);
+  });
+}
+
+start(PORT, PORT_ATTEMPTS);
 
 process.on('SIGINT', () => {
   for (const res of clients) res.end();
