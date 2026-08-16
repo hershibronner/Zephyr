@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skylark — say where you want to go</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🛫</text></svg>">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wordmark">Skylark</div>
+  <div class="sources" id="sources" aria-live="polite"></div>
+</header>
+
+<main>
+  <section class="ask">
+    <h1>Say where you want to go.</h1>
+    <p class="sub">In your own words — dates, times, budget, whatever matters. We read it, then look for the option that is actually best, not just the one with the smallest number.</p>
+
+    <form id="search-form" autocomplete="off">
+      <textarea
+        id="query"
+        name="query"
+        rows="3"
+        placeholder="I wanna travel from New York to Lisbon on Sun Aug 16, only after 4PM, and my budget is $600"
+        aria-label="Describe your trip"></textarea>
+      <div class="controls">
+        <button type="submit" id="submit">Find flights</button>
+        <span class="hint">⌘/Ctrl + Enter</span>
+      </div>
+    </form>
+
+    <div class="examples" id="examples">
+      <button type="button" data-fill="From Boston to Lisbon on Sun Aug 16, only after 4PM, budget $600, no red-eyes">Evening departure, on a budget</button>
+      <button type="button" data-fill="Cheapest way from London to Tokyo sometime in the first half of September, I don't mind a stop but nothing under an hour to connect">Flexible dates, cheapest</button>
+      <button type="button" data-fill="2 adults from San Francisco to Denver next Friday, nonstop, need to land before 6pm">Nonstop, hard deadline</button>
+      <button type="button" data-fill="New York to Paris on Aug 20 in business class, fastest option, money is not the issue">Fastest, business class</button>
+    </div>
+  </section>
+
+  <section id="status" class="status" hidden aria-live="polite"></section>
+
+  <section id="reading" class="reading" hidden>
+    <h2>What we read</h2>
+    <p class="interpretation" id="interpretation"></p>
+    <div class="chips" id="chips"></div>
+    <p class="relaxed" id="relaxed" hidden></p>
+    <ul class="clarifications" id="clarifications" hidden></ul>
+  </section>
+
+  <section id="summary" class="summary" hidden></section>
+
+  <section id="results" class="results"></section>
+</main>
+
+<footer>
+  <p>Prices and availability are whatever the configured provider returns and can change before you book. Skylark does not sell tickets — it points at the option worth buying.</p>
+</footer>
+
+<script src="/app.js" type="module"></script>
+</body>
+</html>

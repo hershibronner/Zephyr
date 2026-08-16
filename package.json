@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Development server for the Zephyr web prototype. The app itself is built with Gradle.",
+  "description": "Dev servers for the Zephyr web prototype and the Skylark flight search. The Android app itself is built with Gradle.",
   "scripts": {
     "start": "node prototype/serve.mjs",
     "dev": "node prototype/serve.mjs",
     "build": "node prototype/build.mjs",
-    "test": "node prototype/parity.test.mjs"
+    "test": "node prototype/parity.test.mjs",
+    "flights": "node flights/server.mjs",
+    "test:flights": "node --test flights/test/*.test.mjs"
   },
   "engines": {
     "node": ">=18"

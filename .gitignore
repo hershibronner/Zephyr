@@ -18,3 +18,6 @@ keystore.properties
 
 # Node (the prototype dev server has no dependencies, but just in case)
 node_modules/
+
+# Skylark local credentials
+flights/.env
