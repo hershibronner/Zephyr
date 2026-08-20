@@ -9,16 +9,28 @@ import app.zephyr.fitness.data.db.MealSlot
 import app.zephyr.fitness.data.db.PlannedSlotEntity
 import app.zephyr.fitness.data.db.WeightEntity
 import app.zephyr.fitness.domain.TodayState
-import app.zephyr.fitness.ui.screens.OnboardingDraft
+import app.zephyr.fitness.ui.screens.ObDraft
+import app.zephyr.fitness.ui.screens.ObStep
+import dev.zephyr.core.activity.ActivityType
+import dev.zephyr.core.energy.BasalMetabolicRate
 import dev.zephyr.core.energy.CalorieTarget
 import dev.zephyr.core.energy.CalorieTargetResult
 import dev.zephyr.core.energy.MacroCalculator
 import dev.zephyr.core.energy.MacroTargets
+import dev.zephyr.core.energy.TargetAdjustment
 import dev.zephyr.core.ledger.EnergyBalance
 import dev.zephyr.core.ledger.LedgerSummary
 import dev.zephyr.core.ledger.MacroTotals
+import dev.zephyr.core.model.ActivityLevel
+import dev.zephyr.core.model.GoalPace
+import dev.zephyr.core.model.Sex
 import dev.zephyr.core.model.UserProfile
+import dev.zephyr.core.plan.FitnessBaseline
+import dev.zephyr.core.plan.PlannedSlot
+import dev.zephyr.core.plan.Prescription
+import dev.zephyr.core.plan.ProgressionEngine
 import dev.zephyr.core.plan.WeeklyTemplate
+import dev.zephyr.core.steps.StepGoalEngine
 import dev.zephyr.core.steps.StepPace
 import dev.zephyr.core.streak.StreakResult
 import dev.zephyr.core.trend.WeightTrend
@@ -26,32 +38,58 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.MonthDay
+import java.time.temporal.ChronoUnit
 
+@Suppress("OPT_IN_USAGE")
 class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     private val today = LocalDate.now()
 
-    val state: StateFlow<TodayState> = container.todayRepository
-        .observe(today)
+    private val _selectedDate = MutableStateFlow(today)
+    val selectedDate: StateFlow<LocalDate> = _selectedDate.asStateFlow()
+
+    /** The day on screen, which is today unless the date strip says otherwise. */
+    val state: StateFlow<TodayState> = _selectedDate
+        .flatMapLatest { date -> container.todayRepository.observe(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyState())
 
-    private val _draft = MutableStateFlow(OnboardingDraft())
-    val draft: StateFlow<OnboardingDraft> = _draft.asStateFlow()
+    /** Days with anything logged, so the date strip can mark them. */
+    val loggedDates: StateFlow<Set<LocalDate>> = container.database.foodDao()
+        .observeLogBetween(today.minusDays(30), today)
+        .map { entries -> entries.map { it.date }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
-    fun updateDraft(draft: OnboardingDraft) {
+    private val _draft = MutableStateFlow(ObDraft())
+    val draft: StateFlow<ObDraft> = _draft.asStateFlow()
+
+    private val _prescription = MutableStateFlow<Prescription?>(null)
+    val prescription: StateFlow<Prescription?> = _prescription.asStateFlow()
+
+    init {
+        refreshPrescription()
+    }
+
+    fun updateDraft(draft: ObDraft) {
         _draft.value = draft
     }
 
+    fun selectDate(date: LocalDate) {
+        if (!date.isAfter(today)) _selectedDate.value = date
+    }
+
     /**
-     * Live preview of the plan the current draft would produce, so onboarding can show the target
-     * before committing it. Returns null until enough has been entered to compute anything honest.
+     * The plan the current draft would produce, so onboarding can show the number before committing
+     * it. Null until enough has been entered to compute anything honest.
      */
-    fun previewPlan(draft: OnboardingDraft): Pair<CalorieTargetResult, MacroTargets>? {
+    fun previewPlan(draft: ObDraft): Pair<CalorieTargetResult, MacroTargets>? {
         val profile = draft.toProfile() ?: return null
         val target = CalorieTarget.forProfile(profile, today)
         val macros = MacroCalculator.calculate(
@@ -62,14 +100,14 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
         return target to macros
     }
 
-    fun completeOnboarding(draft: OnboardingDraft, onDone: () -> Unit) {
+    fun completeOnboarding(draft: ObDraft, onDone: () -> Unit) {
         val profile = draft.toProfile() ?: return
         viewModelScope.launch {
             container.settingsStore.saveProfile(profile)
             container.database.weightDao().upsert(WeightEntity(today, profile.weightKg))
 
-            // Seed the weekly skeleton so the coach has something to remind them about from day one.
-            // An empty plan means an app that never asks anything of you, which is the failure mode.
+            // Seed the weekly skeleton so the coach has something to hold them to from day one. An
+            // empty plan means an app that never asks anything of you, which is the failure mode.
             if (container.database.planDao().count() == 0) {
                 WeeklyTemplate.default().slots.forEach { slot ->
                     container.database.planDao().upsert(
@@ -84,32 +122,41 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
             }
 
             container.settingsStore.completeOnboarding()
+            refreshPrescription()
             onDone()
         }
     }
 
-    fun quickAddCalories(kcal: Int, name: String = "Quick add", slot: MealSlot = MealSlot.SNACK) {
+    fun quickAddCalories(kcal: Int, name: String = "Quick add", proteinG: Double = 0.0) {
         if (kcal <= 0) return
         viewModelScope.launch {
             container.database.foodDao().insertLog(
                 FoodLogEntity(
-                    date = today,
-                    slot = slot,
+                    // Lands on the day being viewed, so last night's dinner can be added this morning.
+                    date = _selectedDate.value,
+                    slot = slotForNow(),
                     name = name,
                     quantityGrams = null,
                     kcal = kcal,
+                    proteinG = proteinG,
                 ),
             )
         }
     }
 
-    fun logWeight(weightKg: Double) {
-        if (weightKg !in 30.0..300.0) return
+    fun deleteFood(entry: FoodLogEntity) {
+        viewModelScope.launch { container.database.foodDao().deleteLog(entry) }
+    }
+
+    /** Takes pounds, because that's what the screen asks for. */
+    fun logWeightPounds(pounds: Double) {
+        val kg = Units.lbToKg(pounds)
+        if (kg !in 30.0..300.0) return
         viewModelScope.launch {
-            container.database.weightDao().upsert(WeightEntity(today, weightKg))
-            // Targets are derived from body weight, so a weigh-in has to update the profile too or
-            // the plan slowly drifts out of date as the user succeeds.
-            container.settingsStore.updateWeight(weightKg)
+            container.database.weightDao().upsert(WeightEntity(_selectedDate.value, kg))
+            // Targets derive from body weight, so a weigh-in has to move the profile too or the plan
+            // slowly drifts out of date as the user succeeds.
+            container.settingsStore.updateWeight(kg)
         }
     }
 
@@ -117,13 +164,58 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.stepRepository.sync(today) }
     }
 
+    private fun refreshPrescription() {
+        viewModelScope.launch {
+            val slots = container.database.planDao().all()
+                .filter { it.enabled }
+                .map { entity ->
+                    PlannedSlot(
+                        id = entity.id,
+                        dayOfWeek = DayOfWeek.of(entity.dayOfWeek),
+                        type = runCatching { ActivityType.valueOf(entity.type) }.getOrDefault(ActivityType.OTHER),
+                        timeOfDay = entity.timeOfDay,
+                        enabled = true,
+                    )
+                }
+            if (slots.isEmpty()) {
+                _prescription.value = null
+                return@launch
+            }
+
+            val weekStart = today.with(DayOfWeek.MONDAY)
+            val planStart = container.planStartDate().with(DayOfWeek.MONDAY)
+            val weekIndex = ChronoUnit.WEEKS.between(planStart, weekStart).toInt().coerceAtLeast(0)
+            val longestRun = container.database.sessionDao()
+                .longestSince(ActivityType.RUN.name, today.minusDays(30))
+
+            _prescription.value = ProgressionEngine
+                .prescriptionsForWeek(
+                    template = WeeklyTemplate(slots),
+                    weekStart = weekStart,
+                    weekIndex = weekIndex,
+                    baseline = FitnessBaseline(longestRunMetres = longestRun, longestHikeMinutes = null),
+                )
+                .firstOrNull { it.date == today }
+        }
+    }
+
+    private fun slotForNow(): MealSlot {
+        val hour = LocalTime.now().hour
+        return when {
+            hour < 11 -> MealSlot.BREAKFAST
+            hour < 15 -> MealSlot.LUNCH
+            hour < 21 -> MealSlot.DINNER
+            else -> MealSlot.SNACK
+        }
+    }
+
     private fun emptyState() = TodayState(
         date = today,
         ready = false,
         balance = EnergyBalance(today, 0, 0, 0, 0, MacroTotals()),
-        stepStatus = StepPace.status(0, 0, LocalTime.now()),
+        stepStatus = StepPace.status(0, StepGoalEngine.DEFAULT_GOAL, LocalTime.now()),
         macroTargets = MacroTargets(0, 0, 0, 0),
-        target = CalorieTargetResult(0, 0, 0, dev.zephyr.core.energy.TargetAdjustment.NONE, 0.0),
+        target = CalorieTargetResult(0, 0, 0, TargetAdjustment.NONE, 0.0),
         adaptiveTdee = null,
         trend = WeightTrend.calculate(emptyList()),
         streak = StreakResult(0, 0, false, null),
@@ -134,7 +226,7 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
         settings = app.zephyr.fitness.data.prefs.ZephyrSettings(
             onboarded = false,
             profile = null,
-            stepGoal = dev.zephyr.core.steps.StepGoalEngine.DEFAULT_GOAL,
+            stepGoal = StepGoalEngine.DEFAULT_GOAL,
             stepGoalIsManual = false,
             nudges = dev.zephyr.core.nudge.NudgeSettings(),
             useAdaptiveTdee = true,
@@ -146,28 +238,29 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
-        override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            ZephyrViewModel(container) as T
+        override fun <T : ViewModel> create(modelClass: Class<T>): T = ZephyrViewModel(container) as T
     }
 }
 
-/** Converts the onboarding form into a profile, or null while it's still incomplete. */
-fun OnboardingDraft.toProfile(): UserProfile? {
-    val year = birthYear.toIntOrNull() ?: return null
-    val height = heightCm.toDoubleOrNull() ?: return null
-    val weight = weightKg.toDoubleOrNull() ?: return null
-    val goal = goalWeightKg.toDoubleOrNull() ?: weight
-    if (!yearValid || !heightValid || !weightValid) return null
+/**
+ * Commits the imperial onboarding draft into the metric profile every formula expects. This is the
+ * one place the two unit systems meet.
+ */
+fun ObDraft.toProfile(): UserProfile? {
+    val age = age.toIntOrNull() ?: return null
+    val heightCm = heightCm ?: return null
+    val weightKg = weightKg ?: return null
+    val goalKg = goalWeightKg ?: weightKg
 
     return UserProfile(
-        sex = sex,
-        // Only the year is asked for — a full birth date is more personal data than the equation
+        sex = sex ?: Sex.UNSPECIFIED,
+        // Only an age is asked for — a full birth date is more personal data than the equation
         // needs, and age in years is all Mifflin-St Jeor consumes.
-        birthDate = MonthDay.of(1, 1).atYear(year),
-        heightCm = height,
-        weightKg = weight,
-        goalWeightKg = goal,
-        activityLevel = activity,
-        goalPace = pace,
+        birthDate = MonthDay.of(1, 1).atYear(LocalDate.now().year - age),
+        heightCm = heightCm,
+        weightKg = weightKg,
+        goalWeightKg = goalKg,
+        activityLevel = activity ?: ActivityLevel.LIGHT,
+        goalPace = pace ?: GoalPace.LOSE_STEADY,
     )
 }
