@@ -313,10 +313,11 @@ private fun WeightCard(state: TodayState, onLogWeight: () -> Unit) {
                 },
                 color = Z.Muted, fontSize = 13.sp, lineHeight = 19.sp,
             )
-            state.adaptiveTdee?.measuredTdeeKcal?.let { measured ->
+            val adaptive = state.adaptiveTdee
+            adaptive?.measuredTdeeKcal?.let { measured ->
                 Text(
                     "Zephyr now measures your maintenance at ${Units.number(measured)} kcal, from " +
-                        "${state.adaptiveTdee.daysOfData} days of your own data — not a formula.",
+                        "${adaptive.daysOfData} days of your own data — not a formula.",
                     color = Z.GreenInk, fontSize = 13.sp, lineHeight = 19.sp, fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .fillMaxWidth()
