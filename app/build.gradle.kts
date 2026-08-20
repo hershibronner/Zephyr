@@ -30,6 +30,13 @@ android {
         )
 
         vectorDrawables { useSupportLibrary = true }
+
+        // ML Kit ships its barcode scanner as native code for four ABIs. Two of them are x86,
+        // which only ever runs on an emulator — 12 MB of an APK that exists to be downloaded
+        // repeatedly onto a real phone, often over mobile data. Dropping them halves the update.
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     signingConfigs {
