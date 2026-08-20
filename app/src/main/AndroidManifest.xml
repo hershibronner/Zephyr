@@ -54,6 +54,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Recording has to survive the screen going off and the app being backgrounded, which on
+             modern Android means a foreground service or no recording at all. -->
+        <service
+            android:name=".tracking.TrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <!-- The installer runs in another process and cannot read our cache directory directly, so
              the downloaded APK is handed over as a content:// URI scoped to that one file. -->
         <provider

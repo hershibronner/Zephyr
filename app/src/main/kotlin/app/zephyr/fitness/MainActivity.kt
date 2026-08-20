@@ -2,6 +2,7 @@ package app.zephyr.fitness
 
 import android.Manifest
 import android.os.Build
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -48,17 +49,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.zephyr.fitness.ui.Units
 import app.zephyr.fitness.ui.ZephyrViewModel
 import app.zephyr.fitness.ui.screens.ObStep
+import app.zephyr.fitness.ui.screens.MoveScreen
 import app.zephyr.fitness.ui.screens.OnboardingScreen
 import app.zephyr.fitness.ui.screens.TodayScreen
+import app.zephyr.fitness.tracking.TrackingService
 import app.zephyr.fitness.ui.components.UpdateBanner
 import app.zephyr.fitness.ui.theme.Z
 import app.zephyr.fitness.ui.theme.ZephyrTheme
@@ -83,8 +88,40 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            hasActivityRecognition.value = checkStepPermission()
             viewModel.syncSteps()
         }
+
+    /** Recomputed on resume, so granting a permission in Settings shows up without a restart. */
+    private val hasLocation = mutableStateOf(false)
+    private val hasActivityRecognition = mutableStateOf(true)
+
+    private val locationLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            hasLocation.value = checkLocationPermission()
+        }
+
+    /** Below Android Q the permission does not exist, so the counter is always readable. */
+    private fun checkStepPermission(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestStepPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
+        }
+    }
+
+    private fun checkLocationPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestLocation() {
+        locationLauncher.launch(
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -103,7 +140,13 @@ class MainActivity : ComponentActivity() {
                         onFinish = { viewModel.completeOnboarding(draft) { requestRuntimePermissions() } },
                     )
                 } else {
-                    Home(viewModel)
+                    Home(
+                        viewModel = viewModel,
+                        hasLocation = hasLocation.value,
+                        onRequestLocation = ::requestLocation,
+                        stepsBlocked = !hasActivityRecognition.value,
+                        onEnableSteps = ::requestStepPermission,
+                    )
                 }
             }
         }
@@ -119,6 +162,8 @@ class MainActivity : ComponentActivity() {
         // covers coming back from the system permission screen mid-install.
         viewModel.checkForUpdate()
         viewModel.refreshInstallPermission()
+        hasLocation.value = checkLocationPermission()
+        hasActivityRecognition.value = checkStepPermission()
     }
 
     /**
@@ -136,8 +181,17 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Home(viewModel: ZephyrViewModel) {
+private fun Home(
+    viewModel: ZephyrViewModel,
+    hasLocation: Boolean,
+    onRequestLocation: () -> Unit,
+    stepsBlocked: Boolean,
+    onEnableSteps: () -> Unit,
+) {
+    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val tracking by viewModel.tracking.collectAsStateWithLifecycle()
+    val history by viewModel.sessionHistory.collectAsStateWithLifecycle()
     val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
     val loggedDates by viewModel.loggedDates.collectAsStateWithLifecycle()
     val prescription by viewModel.prescription.collectAsStateWithLifecycle()
@@ -176,11 +230,39 @@ private fun Home(viewModel: ZephyrViewModel) {
                     loggedDates = loggedDates,
                     prescription = prescription,
                     sessionDone = state.sessionsToday > 0,
+                    stepsBlocked = stepsBlocked,
+                    onEnableSteps = onEnableSteps,
                     onSelectDate = viewModel::selectDate,
                     onLogWeight = { showWeighIn = true },
                     onOpenPlan = { tab = Tab.PLAN },
                     onOpenFood = { tab = Tab.FOOD },
                     onDeleteFood = viewModel::deleteFood,
+                    modifier = Modifier.weight(1f),
+                )
+                Tab.MOVE -> MoveScreen(
+                    tracking = tracking,
+                    history = history,
+                    hasLocationPermission = hasLocation,
+                    onRequestPermission = onRequestLocation,
+                    onStart = { type ->
+                        if (hasLocation) {
+                            TrackingService.start(context, type, viewModel.trackingWeightKg())
+                        } else {
+                            onRequestLocation()
+                        }
+                    },
+                    onPause = { TrackingService.send(context, TrackingService.ACTION_PAUSE) },
+                    onResume = { TrackingService.send(context, TrackingService.ACTION_RESUME) },
+                    onFinish = {
+                        // Stop the service first: the repository is cleared as part of finishing, and
+                        // a late GPS fix landing afterwards would restart a session that just ended.
+                        TrackingService.send(context, TrackingService.ACTION_STOP)
+                        viewModel.finishTracking()
+                    },
+                    onDiscard = {
+                        TrackingService.send(context, TrackingService.ACTION_STOP)
+                        viewModel.discardTracking()
+                    },
                     modifier = Modifier.weight(1f),
                 )
                 // The remaining tabs are still being ported from the prototype; the screen says so

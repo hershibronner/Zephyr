@@ -7,8 +7,11 @@ import app.zephyr.fitness.AppContainer
 import app.zephyr.fitness.data.db.FoodLogEntity
 import app.zephyr.fitness.data.db.MealSlot
 import app.zephyr.fitness.data.db.PlannedSlotEntity
+import app.zephyr.fitness.data.db.RoutePointEntity
+import app.zephyr.fitness.data.db.SessionEntity
 import app.zephyr.fitness.data.db.WeightEntity
 import app.zephyr.fitness.domain.TodayState
+import app.zephyr.fitness.tracking.TrackingState
 import app.zephyr.fitness.ui.screens.ObDraft
 import app.zephyr.fitness.ui.screens.ObStep
 import app.zephyr.fitness.update.UpdateManifest
@@ -46,6 +49,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneId
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.MonthDay
@@ -89,6 +94,13 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     /** A version the user waved away, so re-checking doesn't resurrect the same banner. */
     private var dismissedVersion: Int? = null
+
+    /** The session in progress, owned by the service so it survives this ViewModel. */
+    val tracking: StateFlow<TrackingState> = container.trackingRepository.state
+
+    val sessionHistory: StateFlow<List<SessionEntity>> = container.database.sessionDao()
+        .observeRecent(30)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
         refreshPrescription()
@@ -251,6 +263,61 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.stepRepository.sync(today) }
     }
 
+    // ---- Tracking -------------------------------------------------------------------------
+
+    /**
+     * Body weight for the calorie model, from the saved profile. Falls back to an average rather
+     * than zero, so a session recorded before onboarding finishes still gets a defensible number.
+     */
+    fun trackingWeightKg(): Double = state.value.settings.profile?.weightKg ?: DEFAULT_WEIGHT_KG
+
+    /**
+     * Saves the finished session and its route, then folds it into the day's ledger.
+     *
+     * Sessions shorter than a few seconds or with no distance are discarded rather than saved: an
+     * accidental start-then-stop should not litter the history or claim calories.
+     */
+    fun finishTracking(onSaved: () -> Unit = {}) {
+        val finished = container.trackingRepository.finish()
+        viewModelScope.launch {
+            if (finished.elapsedSeconds >= MIN_SAVEABLE_SECONDS && finished.distanceMetres > 0) {
+                val startedAt = finished.startedAtMillis
+                val sessionId = container.database.sessionDao().insert(
+                    SessionEntity(
+                        date = Instant.ofEpochMilli(startedAt).atZone(ZoneId.systemDefault()).toLocalDate(),
+                        type = finished.type.name,
+                        startEpochMillis = startedAt,
+                        endEpochMillis = System.currentTimeMillis(),
+                        durationSeconds = finished.elapsedSeconds,
+                        distanceMetres = finished.distanceMetres,
+                        elevationGainMetres = finished.elevationGainMetres,
+                        elevationLossMetres = finished.elevationLossMetres,
+                        kcal = finished.kcal,
+                        netKcal = finished.netKcal,
+                    ),
+                )
+                container.database.sessionDao().insertPoints(
+                    finished.points.map { point ->
+                        RoutePointEntity(
+                            sessionId = sessionId,
+                            latitude = point.latitude,
+                            longitude = point.longitude,
+                            altitudeMetres = point.altitudeMetres,
+                            timestampMillis = point.timestampMillis,
+                            accuracyMetres = point.accuracyMetres,
+                        )
+                    },
+                )
+                refreshPrescription()
+            }
+            onSaved()
+        }
+    }
+
+    fun discardTracking() {
+        container.trackingRepository.discard()
+    }
+
     private fun refreshPrescription() {
         viewModelScope.launch {
             val slots = container.database.planDao().all()
@@ -322,6 +389,14 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
             disclaimerAccepted = false,
         ),
     )
+
+    private companion object {
+        /** Used only if a session somehow starts before a profile exists. */
+        const val DEFAULT_WEIGHT_KG = 75.0
+
+        /** Below this, a session is a mis-tap rather than a workout. */
+        const val MIN_SAVEABLE_SECONDS = 10L
+    }
 
     class Factory(private val container: AppContainer) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

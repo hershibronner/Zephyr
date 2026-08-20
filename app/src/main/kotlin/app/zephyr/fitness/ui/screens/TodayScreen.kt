@@ -66,6 +66,9 @@ fun TodayScreen(
      *  plan is a separate concern from the daily ledger, and the ledger's combine is already full. */
     prescription: Prescription?,
     sessionDone: Boolean,
+    /** True when the step permission is missing, so the counter cannot see anything at all. */
+    stepsBlocked: Boolean,
+    onEnableSteps: () -> Unit,
     onSelectDate: (LocalDate) -> Unit,
     onLogWeight: () -> Unit,
     onOpenPlan: () -> Unit,
@@ -141,14 +144,28 @@ fun TodayScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    StatTile(
-                        value = Units.number(state.stepStatus.steps),
-                        label = "of ${Units.number(state.stepStatus.goal)} steps",
-                        background = Z.SkySoft, foreground = Z.SkyInk,
-                        modifier = Modifier.weight(1f),
-                        fraction = state.stepStatus.fractionOfGoal,
-                        icon = { Icon(Icons.Filled.DirectionsRun, null, tint = Z.SkyInk, modifier = Modifier.size(17.dp)) },
-                    )
+                    // A step tile stuck on zero looks like a broken app. When the permission is the
+                    // reason, the tile says so and fixes it on tap rather than quietly reading nothing.
+                    if (stepsBlocked) {
+                        StatTile(
+                            value = "Turn on",
+                            label = "Tap to count your steps",
+                            background = Z.WarnSoft, foreground = Z.WarnInk,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable(onClick = onEnableSteps),
+                            icon = { Icon(Icons.Filled.DirectionsRun, null, tint = Z.WarnInk, modifier = Modifier.size(17.dp)) },
+                        )
+                    } else {
+                        StatTile(
+                            value = Units.number(state.stepStatus.steps),
+                            label = "of ${Units.number(state.stepStatus.goal)} steps",
+                            background = Z.SkySoft, foreground = Z.SkyInk,
+                            modifier = Modifier.weight(1f),
+                            fraction = state.stepStatus.fractionOfGoal,
+                            icon = { Icon(Icons.Filled.DirectionsRun, null, tint = Z.SkyInk, modifier = Modifier.size(17.dp)) },
+                        )
+                    }
                     StatTile(
                         value = "${balance.macros.proteinG}g",
                         label = "of ${balance.proteinTargetG}g protein",

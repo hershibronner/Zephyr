@@ -8,11 +8,11 @@ import app.zephyr.fitness.data.db.ZephyrDatabase
 import app.zephyr.fitness.data.prefs.SettingsStore
 import app.zephyr.fitness.data.steps.StepRepository
 import app.zephyr.fitness.domain.TodayRepository
+import app.zephyr.fitness.tracking.TrackingRepository
 import app.zephyr.fitness.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -34,10 +34,13 @@ class AppContainer(private val context: Context) {
     val todayRepository: TodayRepository by lazy { TodayRepository(database, settingsStore) }
     val updateManager: UpdateManager by lazy { UpdateManager(context) }
 
-    /** Set by the tracking service so the coach knows to stay quiet mid-run. */
-    val trackingActive = MutableStateFlow(false)
+    /**
+     * Holds the session in progress. A process singleton, because the recording has to outlive the
+     * Activity that started it — a rotation or a backgrounded app must not lose a run.
+     */
+    val trackingRepository: TrackingRepository by lazy { TrackingRepository() }
 
-    fun isTrackingSession(): Boolean = trackingActive.value
+    fun isTrackingSession(): Boolean = trackingRepository.state.value.isActive
 
     /**
      * When the training plan began, used to work out which week of progression the user is in.

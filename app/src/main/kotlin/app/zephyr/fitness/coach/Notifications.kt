@@ -41,7 +41,20 @@ class Notifier(private val context: Context) {
                 },
             ).apply { description = category.description }
         }
-        manager.createNotificationChannels(channels)
+
+        // The tracking channel is not a nudge: it carries the ongoing notification a foreground
+        // location service is required to show. Low importance so it never makes a sound mid-run,
+        // and kept separate so silencing coach reminders cannot silence the recording indicator.
+        val tracking = NotificationChannel(
+            CHANNEL_TRACKING,
+            "Session tracking",
+            NotificationManager.IMPORTANCE_LOW,
+        ).apply {
+            description = "Shows distance and time while a run, walk or hike is being recorded."
+            setShowBadge(false)
+        }
+
+        manager.createNotificationChannels(channels + tracking)
     }
 
     fun canPost(): Boolean =
@@ -92,5 +105,8 @@ class Notifier(private val context: Context) {
 
     companion object {
         const val EXTRA_NUDGE_KEY = "nudge_key"
+
+        /** Channel for the ongoing notification shown while a session is being recorded. */
+        const val CHANNEL_TRACKING = "tracking"
     }
 }

@@ -43,6 +43,13 @@ object Units {
 
     fun feet(metres: Double): String = "${number(metresToFeet(metres).roundToInt())} ft"
 
+    // Bare numbers, for places that already carry their own unit label — a big "3.21" under the
+    // word MILES should not also say "mi".
+    fun milesValue(metres: Double, decimals: Int = 2): String =
+        String.format(Locale.US, "%.${decimals}f", metresToMiles(metres))
+
+    fun feetValue(metres: Double): String = number(metresToFeet(metres).roundToInt())
+
     /** Pace in minutes per mile — the only pace an American runner reads instinctively. */
     fun paceSecondsPerMile(distanceMetres: Double, durationSeconds: Long): Double? {
         if (distanceMetres <= 0 || durationSeconds <= 0) return null
