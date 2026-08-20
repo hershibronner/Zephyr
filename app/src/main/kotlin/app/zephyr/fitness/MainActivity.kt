@@ -60,13 +60,19 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.zephyr.fitness.ui.Units
 import app.zephyr.fitness.ui.ZephyrViewModel
 import app.zephyr.fitness.ui.screens.ObStep
+import app.zephyr.fitness.ui.screens.CaptureMode
+import app.zephyr.fitness.ui.screens.CaptureScreen
+import app.zephyr.fitness.ui.screens.EstimateDialog
+import app.zephyr.fitness.ui.screens.FoodScreen
 import app.zephyr.fitness.ui.screens.MoveScreen
+import app.zephyr.fitness.ui.screens.PortionDialog
 import app.zephyr.fitness.ui.screens.OnboardingScreen
 import app.zephyr.fitness.ui.screens.TodayScreen
 import app.zephyr.fitness.tracking.TrackingService
 import app.zephyr.fitness.ui.components.UpdateBanner
 import app.zephyr.fitness.ui.theme.Z
 import app.zephyr.fitness.ui.theme.ZephyrTheme
+import app.zephyr.fitness.ui.FoodFlow
 import app.zephyr.fitness.update.UpdateState
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -96,6 +102,15 @@ class MainActivity : ComponentActivity() {
     private val hasLocation = mutableStateOf(false)
     private val hasActivityRecognition = mutableStateOf(true)
 
+    private val hasCamera = mutableStateOf(false)
+
+    private val cameraLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            hasCamera.value = checkCameraPermission()
+            // Opening the camera is the only reason this is ever asked for, so go straight there.
+            if (hasCamera.value) viewModel.openCapture()
+        }
+
     private val locationLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             hasLocation.value = checkLocationPermission()
@@ -111,6 +126,14 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             permissionLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
         }
+    }
+
+    private fun checkCameraPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestCamera() {
+        cameraLauncher.launch(arrayOf(Manifest.permission.CAMERA))
     }
 
     private fun checkLocationPermission(): Boolean =
@@ -146,6 +169,8 @@ class MainActivity : ComponentActivity() {
                         onRequestLocation = ::requestLocation,
                         stepsBlocked = !hasActivityRecognition.value,
                         onEnableSteps = ::requestStepPermission,
+                        hasCamera = hasCamera.value,
+                        onRequestCamera = ::requestCamera,
                     )
                 }
             }
@@ -164,6 +189,7 @@ class MainActivity : ComponentActivity() {
         viewModel.refreshInstallPermission()
         hasLocation.value = checkLocationPermission()
         hasActivityRecognition.value = checkStepPermission()
+        hasCamera.value = checkCameraPermission()
     }
 
     /**
@@ -187,6 +213,8 @@ private fun Home(
     onRequestLocation: () -> Unit,
     stepsBlocked: Boolean,
     onEnableSteps: () -> Unit,
+    hasCamera: Boolean,
+    onRequestCamera: () -> Unit,
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -196,6 +224,11 @@ private fun Home(
     val loggedDates by viewModel.loggedDates.collectAsStateWithLifecycle()
     val prescription by viewModel.prescription.collectAsStateWithLifecycle()
     val updateState by viewModel.update.collectAsStateWithLifecycle()
+    val foodFlow by viewModel.foodFlow.collectAsStateWithLifecycle()
+    val recentFoods by viewModel.recentFoods.collectAsStateWithLifecycle()
+    val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
+    var captureMode by remember { mutableStateOf(CaptureMode.BARCODE) }
+    var showKeyDialog by remember { mutableStateOf(false) }
     val needsInstallPermission by viewModel.needsInstallPermission.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.TODAY) }
@@ -210,7 +243,7 @@ private fun Home(
             .background(Z.Page),
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
-            TopBar(today)
+            TopBar(today) { showKeyDialog = true }
 
             UpdateBanner(
                 state = updateState,
@@ -237,6 +270,17 @@ private fun Home(
                     onOpenPlan = { tab = Tab.PLAN },
                     onOpenFood = { tab = Tab.FOOD },
                     onDeleteFood = viewModel::deleteFood,
+                    modifier = Modifier.weight(1f),
+                )
+                Tab.FOOD -> FoodScreen(
+                    balance = state.balance,
+                    entries = state.entries,
+                    recents = recentFoods,
+                    canUsePhotos = hasApiKey,
+                    onScan = { if (hasCamera) viewModel.openCapture() else onRequestCamera() },
+                    onQuickAdd = { showQuickAdd = true },
+                    onPickRecent = viewModel::startPortioning,
+                    onDelete = viewModel::deleteFood,
                     modifier = Modifier.weight(1f),
                 )
                 Tab.MOVE -> MoveScreen(
@@ -294,6 +338,60 @@ private fun Home(
         )
     }
 
+    // The camera covers everything, including the nav bar: while it is open the only meaningful
+    // actions are shoot, switch mode, or close.
+    (foodFlow as? FoodFlow.Capturing)?.let { capturing ->
+        CaptureScreen(
+            mode = captureMode,
+            busy = capturing.busy,
+            status = capturing.status,
+            onModeChange = { captureMode = it },
+            onBarcode = viewModel::onBarcode,
+            onPhoto = viewModel::onMealPhoto,
+            onClose = viewModel::closeFoodFlow,
+        )
+    }
+
+    (foodFlow as? FoodFlow.Portioning)?.let { portioning ->
+        PortionDialog(
+            food = portioning.food,
+            grams = portioning.grams,
+            onGramsChange = viewModel::updatePortion,
+            onConfirm = { viewModel.logPortion() },
+            onDismiss = viewModel::closeFoodFlow,
+        )
+    }
+
+    (foodFlow as? FoodFlow.Reviewing)?.let { reviewing ->
+        EstimateDialog(
+            estimate = reviewing.estimate,
+            onConfirm = { viewModel.logEstimate(reviewing.estimate) },
+            onDismiss = viewModel::closeFoodFlow,
+        )
+    }
+
+    (foodFlow as? FoodFlow.Failed)?.let { failed ->
+        AlertDialog(
+            onDismissRequest = viewModel::closeFoodFlow,
+            containerColor = Z.Card,
+            title = { Text("Couldn't log that", fontWeight = FontWeight.Bold) },
+            text = { Text(failed.reason, color = Z.Muted, fontSize = 14.sp, lineHeight = 20.sp) },
+            confirmButton = {
+                TextButton(onClick = viewModel::closeFoodFlow) {
+                    Text("OK", fontWeight = FontWeight.Bold)
+                }
+            },
+        )
+    }
+
+    if (showKeyDialog) {
+        ApiKeyDialog(
+            hasKey = hasApiKey,
+            onSave = { viewModel.saveApiKey(it); showKeyDialog = false },
+            onDismiss = { showKeyDialog = false },
+        )
+    }
+
     if (showQuickAdd) {
         NumberDialog(
             title = "Quick add",
@@ -317,7 +415,7 @@ private fun Home(
 }
 
 @Composable
-private fun TopBar(today: LocalDate) {
+private fun TopBar(today: LocalDate, onOpenSettings: () -> Unit) {
     val hour = remember { java.time.LocalTime.now().hour }
     Row(
         modifier = Modifier
@@ -354,9 +452,10 @@ private fun TopBar(today: LocalDate) {
             Modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(Z.Card),
+                .background(Z.Card)
+                .clickable(onClick = onOpenSettings),
             contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Filled.Notifications, "Coach", tint = Z.Ink, modifier = Modifier.size(19.dp)) }
+        ) { Icon(Icons.Filled.Settings, "Settings", tint = Z.Ink, modifier = Modifier.size(19.dp)) }
     }
 }
 
@@ -409,6 +508,61 @@ private fun ComingSoon(tab: Tab, modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+/**
+ * Where the user supplies their own Anthropic API key for photo estimation.
+ *
+ * The key is theirs and stays on the device. Shipping one inside the APK would put it in the hands
+ * of anyone who downloads the app, billed to whoever published it — so the feature is off until a
+ * key is entered, rather than quietly working on someone else's account.
+ */
+@Composable
+private fun ApiKeyDialog(
+    hasKey: Boolean,
+    onSave: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Z.Card,
+        title = { Text("Photo calorie estimates", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    if (hasKey) {
+                        "A key is saved. Photo estimates are on. Paste a new one to replace it, " +
+                            "or clear the box and save to turn photos off."
+                    } else {
+                        "Photographing a meal sends it to Claude for a calorie estimate. That needs " +
+                            "your own Anthropic API key from console.anthropic.com — it stays on this " +
+                            "phone and the usage is billed to you."
+                    },
+                    color = Z.Muted, fontSize = 13.sp, lineHeight = 19.sp,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(if (hasKey) "New key" else "sk-ant-...") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Barcode scanning needs no key and always works.",
+                    color = Z.Faint, fontSize = 12.sp,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(text.takeIf { it.isNotBlank() }) }) {
+                Text("Save", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 @Composable

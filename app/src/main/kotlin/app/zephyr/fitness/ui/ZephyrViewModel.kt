@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import app.zephyr.fitness.AppContainer
+import app.zephyr.fitness.data.db.FoodEntity
 import app.zephyr.fitness.data.db.FoodLogEntity
 import app.zephyr.fitness.data.db.MealSlot
 import app.zephyr.fitness.data.db.PlannedSlotEntity
 import app.zephyr.fitness.data.db.RoutePointEntity
 import app.zephyr.fitness.data.db.SessionEntity
 import app.zephyr.fitness.data.db.WeightEntity
+import app.zephyr.fitness.data.food.MealEstimate
 import app.zephyr.fitness.domain.TodayState
 import app.zephyr.fitness.tracking.TrackingState
 import app.zephyr.fitness.ui.screens.ObDraft
@@ -43,6 +45,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -55,6 +58,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.MonthDay
 import java.time.temporal.ChronoUnit
+import kotlin.math.roundToInt
 
 @Suppress("OPT_IN_USAGE")
 class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
@@ -247,6 +251,157 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { container.database.foodDao().deleteLog(entry) }
     }
 
+    // ---- Food capture ---------------------------------------------------------------------
+
+    private val _foodFlow = MutableStateFlow<FoodFlow>(FoodFlow.Idle)
+    val foodFlow: StateFlow<FoodFlow> = _foodFlow.asStateFlow()
+
+    val recentFoods: StateFlow<List<FoodEntity>> = container.database.foodDao()
+        .observeRecent(20)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Photo estimation needs the user's own key, so the button only appears once one is saved. */
+    val hasApiKey: StateFlow<Boolean> = container.settingsStore.anthropicKey
+        .map { !it.isNullOrBlank() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun openCapture() {
+        _foodFlow.value = FoodFlow.Capturing()
+    }
+
+    fun closeFoodFlow() {
+        _foodFlow.value = FoodFlow.Idle
+    }
+
+    fun saveApiKey(key: String?) {
+        viewModelScope.launch { container.settingsStore.setAnthropicKey(key) }
+    }
+
+    /**
+     * Looks a barcode up locally first, then against Open Food Facts.
+     *
+     * A product seen once is cached, so the second scan of the same yoghurt works with no signal at
+     * all — which matters in a supermarket, where reception is usually poor.
+     */
+    fun onBarcode(barcode: String) {
+        if ((_foodFlow.value as? FoodFlow.Capturing)?.busy == true) return
+        _foodFlow.value = FoodFlow.Capturing(busy = true, status = "Looking up $barcode…")
+
+        viewModelScope.launch {
+            val cached = container.database.foodDao().findByBarcode(barcode)
+            if (cached != null) {
+                _foodFlow.value = FoodFlow.Portioning(cached, defaultGrams(cached))
+                return@launch
+            }
+
+            val found = runCatching { container.openFoodFacts.lookup(barcode) }.getOrNull()
+            _foodFlow.value = if (found == null) {
+                // Not a failure state: plenty of real products simply are not in the database, and
+                // the useful next step is to type it in, not to be told the scan broke.
+                FoodFlow.Capturing(
+                    busy = false,
+                    status = "Not in the food database. Add it by hand and Zephyr will remember it.",
+                )
+            } else {
+                val id = container.database.foodDao().upsertFood(found)
+                val stored = found.copy(id = id)
+                FoodFlow.Portioning(stored, defaultGrams(stored))
+            }
+        }
+    }
+
+    fun onMealPhoto(jpegBase64: String) {
+        if ((_foodFlow.value as? FoodFlow.Capturing)?.busy == true) return
+        _foodFlow.value = FoodFlow.Capturing(busy = true, status = "Working out what's on the plate…")
+
+        viewModelScope.launch {
+            val key = container.settingsStore.anthropicKey.first()
+            if (key.isNullOrBlank()) {
+                _foodFlow.value = FoodFlow.Failed("Add an Anthropic API key in Settings to use photos.")
+                return@launch
+            }
+            _foodFlow.value = runCatching { container.mealPhotoAnalyser.analyse(jpegBase64, key) }
+                .fold(
+                    onSuccess = { estimate ->
+                        if (estimate.items.isEmpty()) {
+                            FoodFlow.Failed(
+                                estimate.note.ifBlank { "No food found in that photo. Try again closer." },
+                            )
+                        } else {
+                            FoodFlow.Reviewing(estimate)
+                        }
+                    },
+                    onFailure = { FoodFlow.Failed(it.message ?: "Could not read that photo") },
+                )
+        }
+    }
+
+    fun updatePortion(grams: String) {
+        val current = _foodFlow.value as? FoodFlow.Portioning ?: return
+        _foodFlow.value = current.copy(grams = grams.filter { it.isDigit() }.take(4))
+    }
+
+    /**
+     * Writes a portion to the log, scaling the per-100g figures to what was actually eaten. This is
+     * the number that decides whether the day's ledger means anything.
+     */
+    fun logPortion(slot: MealSlot? = null) {
+        val current = _foodFlow.value as? FoodFlow.Portioning ?: return
+        val grams = current.grams.toDoubleOrNull()?.takeIf { it > 0 } ?: return
+        val food = current.food
+        val factor = grams / 100.0
+
+        viewModelScope.launch {
+            container.database.foodDao().insertLog(
+                FoodLogEntity(
+                    date = _selectedDate.value,
+                    slot = slot ?: slotForNow(),
+                    foodId = food.id.takeIf { it != 0L },
+                    name = listOfNotNull(food.brand, food.name).joinToString(" "),
+                    quantityGrams = grams,
+                    kcal = (food.kcalPer100 * factor).roundToInt(),
+                    proteinG = food.proteinPer100 * factor,
+                    carbsG = food.carbsPer100 * factor,
+                    fatG = food.fatPer100 * factor,
+                ),
+            )
+            if (food.id != 0L) {
+                container.database.foodDao().markUsed(food.id, LocalDate.now().toEpochDay())
+            }
+            _foodFlow.value = FoodFlow.Idle
+        }
+    }
+
+    /** Logs each identified dish separately, so a wrong one can be deleted without losing the meal. */
+    fun logEstimate(estimate: MealEstimate, slot: MealSlot? = null) {
+        viewModelScope.launch {
+            val mealSlot = slot ?: slotForNow()
+            estimate.items.forEach { item ->
+                container.database.foodDao().insertLog(
+                    FoodLogEntity(
+                        date = _selectedDate.value,
+                        slot = mealSlot,
+                        name = item.name,
+                        quantityGrams = item.grams.takeIf { it > 0 },
+                        kcal = item.kcal,
+                        proteinG = item.proteinG,
+                        carbsG = item.carbsG,
+                        fatG = item.fatG,
+                    ),
+                )
+            }
+            _foodFlow.value = FoodFlow.Idle
+        }
+    }
+
+    fun startPortioning(food: FoodEntity) {
+        _foodFlow.value = FoodFlow.Portioning(food, defaultGrams(food))
+    }
+
+    /** The packet's own serving size when it has one — far likelier to be right than a flat 100 g. */
+    private fun defaultGrams(food: FoodEntity): String =
+        (food.servingGrams?.takeIf { it > 0 } ?: 100.0).roundToInt().toString()
+
     /** Takes pounds, because that's what the screen asks for. */
     fun logWeightPounds(pounds: Double) {
         val kg = Units.lbToKg(pounds)
@@ -271,31 +426,40 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun trackingWeightKg(): Double = state.value.settings.profile?.weightKg ?: DEFAULT_WEIGHT_KG
 
+    /** The session just saved, so the screen can confirm it landed instead of just emptying. */
+    private val _lastSaved = MutableStateFlow<SessionEntity?>(null)
+    val lastSaved: StateFlow<SessionEntity?> = _lastSaved.asStateFlow()
+
+    fun clearLastSaved() {
+        _lastSaved.value = null
+    }
+
     /**
      * Saves the finished session and its route, then folds it into the day's ledger.
      *
-     * Sessions shorter than a few seconds or with no distance are discarded rather than saved: an
-     * accidental start-then-stop should not litter the history or claim calories.
+     * Duration alone is enough to save. Requiring distance meant a session recorded indoors, or one
+     * that ended before GPS ever locked, vanished without a word — the user did the work and the app
+     * showed them nothing. Only a sub-ten-second start-then-stop is treated as a mis-tap.
      */
     fun finishTracking(onSaved: () -> Unit = {}) {
         val finished = container.trackingRepository.finish()
         viewModelScope.launch {
-            if (finished.elapsedSeconds >= MIN_SAVEABLE_SECONDS && finished.distanceMetres > 0) {
+            if (finished.elapsedSeconds >= MIN_SAVEABLE_SECONDS) {
                 val startedAt = finished.startedAtMillis
-                val sessionId = container.database.sessionDao().insert(
-                    SessionEntity(
-                        date = Instant.ofEpochMilli(startedAt).atZone(ZoneId.systemDefault()).toLocalDate(),
-                        type = finished.type.name,
-                        startEpochMillis = startedAt,
-                        endEpochMillis = System.currentTimeMillis(),
-                        durationSeconds = finished.elapsedSeconds,
-                        distanceMetres = finished.distanceMetres,
-                        elevationGainMetres = finished.elevationGainMetres,
-                        elevationLossMetres = finished.elevationLossMetres,
-                        kcal = finished.kcal,
-                        netKcal = finished.netKcal,
-                    ),
+                val entity = SessionEntity(
+                    date = Instant.ofEpochMilli(startedAt).atZone(ZoneId.systemDefault()).toLocalDate(),
+                    type = finished.type.name,
+                    startEpochMillis = startedAt,
+                    endEpochMillis = System.currentTimeMillis(),
+                    durationSeconds = finished.elapsedSeconds,
+                    distanceMetres = finished.distanceMetres,
+                    elevationGainMetres = finished.elevationGainMetres,
+                    elevationLossMetres = finished.elevationLossMetres,
+                    kcal = finished.kcal,
+                    netKcal = finished.netKcal,
                 )
+                val sessionId = container.database.sessionDao().insert(entity)
+                _lastSaved.value = entity.copy(id = sessionId)
                 container.database.sessionDao().insertPoints(
                     finished.points.map { point ->
                         RoutePointEntity(

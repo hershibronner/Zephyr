@@ -68,6 +68,14 @@ class SettingsStore(private val context: Context) {
         val ADAPTIVE_TDEE = booleanPreferencesKey("adaptive_tdee")
         val CALORIE_OVERRIDE = intPreferencesKey("calorie_override")
         val PROTEIN_OVERRIDE = intPreferencesKey("protein_override")
+
+        /**
+         * The user's own Anthropic API key, for photo calorie estimation.
+         *
+         * Held here rather than shipped in the APK: a key baked into a published app is extractable
+         * by anyone who downloads it and would be billed to whoever shipped it.
+         */
+        val ANTHROPIC_KEY = stringPreferencesKey("anthropic_api_key")
     }
 
     val settings: Flow<ZephyrSettings> = context.dataStore.data.map { prefs ->
@@ -184,6 +192,18 @@ class SettingsStore(private val context: Context) {
     suspend fun setCalorieOverride(kcal: Int?) {
         context.dataStore.edit { prefs ->
             if (kcal == null) prefs.remove(Keys.CALORIE_OVERRIDE) else prefs[Keys.CALORIE_OVERRIDE] = kcal
+        }
+    }
+
+    /** Observable so the Food screen can offer photo estimation only once a key exists. */
+    val anthropicKey: Flow<String?> = context.dataStore.data
+        .map { it[Keys.ANTHROPIC_KEY]?.takeIf(String::isNotBlank) }
+
+    suspend fun setAnthropicKey(key: String?) {
+        context.dataStore.edit { prefs ->
+            val trimmed = key?.trim()
+            if (trimmed.isNullOrBlank()) prefs.remove(Keys.ANTHROPIC_KEY)
+            else prefs[Keys.ANTHROPIC_KEY] = trimmed
         }
     }
 
