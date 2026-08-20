@@ -2,6 +2,7 @@ package app.zephyr.fitness.ui.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -62,28 +63,43 @@ import java.util.Locale
 fun MoveScreen(
     tracking: TrackingState,
     history: List<SessionEntity>,
+    selected: ActivityType,
     hasLocationPermission: Boolean,
+    onSelect: (ActivityType) -> Unit,
     onRequestPermission: () -> Unit,
-    onStart: (ActivityType) -> Unit,
+    onStart: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onFinish: () -> Unit,
     onDiscard: () -> Unit,
+    onOpenSession: (SessionEntity) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (tracking.isActive) {
         LiveSession(tracking, onPause, onResume, onFinish, onDiscard, modifier)
     } else {
-        Idle(history, hasLocationPermission, onRequestPermission, onStart, modifier)
+        Idle(
+            history = history,
+            selected = selected,
+            hasLocationPermission = hasLocationPermission,
+            onSelect = onSelect,
+            onRequestPermission = onRequestPermission,
+            onStart = onStart,
+            onOpenSession = onOpenSession,
+            modifier = modifier,
+        )
     }
 }
 
 @Composable
 private fun Idle(
     history: List<SessionEntity>,
+    selected: ActivityType,
     hasLocationPermission: Boolean,
+    onSelect: (ActivityType) -> Unit,
     onRequestPermission: () -> Unit,
-    onStart: (ActivityType) -> Unit,
+    onStart: () -> Unit,
+    onOpenSession: (SessionEntity) -> Unit,
     modifier: Modifier,
 ) {
     LazyColumn(
@@ -104,10 +120,20 @@ private fun Idle(
 
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                StartTile(ActivityType.RUN, Z.VioletSoft, Z.VioletInk, Modifier.weight(1f)) { onStart(it) }
-                StartTile(ActivityType.WALK, Z.SkySoft, Z.SkyInk, Modifier.weight(1f)) { onStart(it) }
-                StartTile(ActivityType.HIKE, Z.GreenSoft, Z.GreenInk, Modifier.weight(1f)) { onStart(it) }
+                TypeTile(ActivityType.RUN, selected, Z.VioletSoft, Z.VioletInk, Modifier.weight(1f), onSelect)
+                TypeTile(ActivityType.WALK, selected, Z.SkySoft, Z.SkyInk, Modifier.weight(1f), onSelect)
+                TypeTile(ActivityType.HIKE, selected, Z.GreenSoft, Z.GreenInk, Modifier.weight(1f), onSelect)
             }
+        }
+
+        item {
+            ControlButton(
+                label = "Start " + selected.label.lowercase(),
+                background = Z.Nav,
+                foreground = Color.White,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onStart,
+            )
         }
 
         if (!hasLocationPermission) {
@@ -138,7 +164,9 @@ private fun Idle(
 
         if (history.isNotEmpty()) {
             item { SectionHeader("Recent") }
-            items(history, key = { it.id }) { session -> HistoryRow(session) }
+            items(history, key = { it.id }) { session ->
+                HistoryRow(session) { onOpenSession(session) }
+            }
         } else {
             item {
                 ZCard(modifier = Modifier.fillMaxWidth()) {
@@ -157,19 +185,30 @@ private fun Idle(
     }
 }
 
+/**
+ * Picks the activity. Selecting is not starting — an accidental brush of a tile used to open a GPS
+ * session and a foreground notification with no way to say "I didn't mean that".
+ */
 @Composable
-private fun StartTile(
+private fun TypeTile(
     type: ActivityType,
+    selected: ActivityType,
     background: Color,
     foreground: Color,
     modifier: Modifier,
-    onStart: (ActivityType) -> Unit,
+    onSelect: (ActivityType) -> Unit,
 ) {
+    val on = type == selected
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(Z.TileRadius))
-            .background(background)
-            .clickable { onStart(type) }
+            .background(if (on) background else Z.Card)
+            .border(
+                width = if (on) 2.dp else 1.dp,
+                color = if (on) foreground.copy(alpha = 0.55f) else Z.Line,
+                shape = RoundedCornerShape(Z.TileRadius),
+            )
+            .clickable { onSelect(type) }
             .padding(vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(9.dp),
@@ -178,7 +217,7 @@ private fun StartTile(
             Modifier
                 .size(42.dp)
                 .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.6f)),
+                .background(if (on) Color.White.copy(alpha = 0.6f) else Z.Page),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -188,11 +227,16 @@ private fun StartTile(
                     else -> Icons.Filled.DirectionsWalk
                 },
                 contentDescription = null,
-                tint = foreground,
+                tint = if (on) foreground else Z.Faint,
                 modifier = Modifier.size(21.dp),
             )
         }
-        Text(type.label, color = foreground, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(
+            type.label,
+            color = if (on) foreground else Z.Muted,
+            fontSize = 14.sp,
+            fontWeight = if (on) FontWeight.Bold else FontWeight.Medium,
+        )
     }
 }
 
@@ -342,7 +386,7 @@ private fun ControlButton(
  * scaled by cos(latitude) so a route doesn't look stretched sideways away from the equator.
  */
 @Composable
-private fun RouteCanvas(points: List<GeoPoint>, modifier: Modifier = Modifier) {
+internal fun RouteCanvas(points: List<GeoPoint>, modifier: Modifier = Modifier) {
     Box(modifier, contentAlignment = Alignment.Center) {
         if (points.size < 2) {
             Text(
@@ -398,7 +442,7 @@ private fun RouteCanvas(points: List<GeoPoint>, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HistoryRow(session: SessionEntity) {
+private fun HistoryRow(session: SessionEntity, onClick: () -> Unit) {
     val when_ = Instant.ofEpochMilli(session.startEpochMillis)
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.US))
@@ -408,6 +452,7 @@ private fun HistoryRow(session: SessionEntity) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(Z.TileRadius))
             .background(Z.Card)
+            .clickable(onClick = onClick)
             .padding(horizontal = 17.dp, vertical = 15.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,

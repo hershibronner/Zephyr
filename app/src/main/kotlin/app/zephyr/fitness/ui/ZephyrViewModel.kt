@@ -19,7 +19,13 @@ import app.zephyr.fitness.ui.screens.ObStep
 import app.zephyr.fitness.update.UpdateManifest
 import app.zephyr.fitness.update.UpdateState
 import dev.zephyr.core.activity.ActivityType
+import dev.zephyr.core.activity.GeoPoint
+import dev.zephyr.core.activity.SessionVerdict
+import dev.zephyr.core.activity.Splits
 import dev.zephyr.core.energy.BasalMetabolicRate
+import dev.zephyr.core.fasting.Fasting
+import dev.zephyr.core.fasting.FastingPlan
+import dev.zephyr.core.fasting.FastingStatus
 import dev.zephyr.core.energy.CalorieTarget
 import dev.zephyr.core.energy.CalorieTargetResult
 import dev.zephyr.core.energy.MacroCalculator
@@ -40,8 +46,14 @@ import dev.zephyr.core.plan.WeeklyTemplate
 import dev.zephyr.core.steps.StepGoalEngine
 import dev.zephyr.core.steps.StepPace
 import dev.zephyr.core.streak.StreakResult
+import dev.zephyr.core.trend.WeighInPrompt
+import dev.zephyr.core.trend.WeighInReminder
 import dev.zephyr.core.trend.WeightTrend
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,6 +67,7 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.MonthDay
 import java.time.temporal.ChronoUnit
@@ -480,6 +493,138 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     fun discardTracking() {
         container.trackingRepository.discard()
+    }
+
+    /** The activity chosen but not yet started — selecting is deliberately not starting. */
+    private val _selectedActivity = MutableStateFlow(ActivityType.RUN)
+    val selectedActivity: StateFlow<ActivityType> = _selectedActivity.asStateFlow()
+
+    fun selectActivity(type: ActivityType) {
+        _selectedActivity.value = type
+    }
+
+    // ---- Session reports ------------------------------------------------------------------
+
+    private val _openSession = MutableStateFlow<SessionReport?>(null)
+    val openSession: StateFlow<SessionReport?> = _openSession.asStateFlow()
+
+    fun openSessionReport(session: SessionEntity) {
+        viewModelScope.launch {
+            val points = container.database.sessionDao().pointsFor(session.id).map { point ->
+                GeoPoint(
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                    altitudeMetres = point.altitudeMetres,
+                    timestampMillis = point.timestampMillis,
+                    accuracyMetres = point.accuracyMetres,
+                )
+            }
+            val type = runCatching { ActivityType.valueOf(session.type) }.getOrDefault(ActivityType.OTHER)
+            val longest = container.database.sessionDao()
+                .longestSince(session.type, session.date.minusDays(30))
+
+            _openSession.value = SessionReport(
+                session = session,
+                points = points,
+                verdict = SessionVerdict.describe(
+                    type = type,
+                    distanceMetres = session.distanceMetres,
+                    durationSeconds = session.durationSeconds,
+                    splits = Splits.perMile(points),
+                    // Compared against the previous best, not including this one.
+                    longestRecentMetres = longest?.takeIf { it > session.distanceMetres },
+                ),
+            )
+        }
+    }
+
+    fun closeSessionReport() {
+        _openSession.value = null
+    }
+
+    // ---- Fasting --------------------------------------------------------------------------
+
+    val fastingPlan: StateFlow<FastingPlan> = container.settingsStore.fastingPlan
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FastingPlan.OFF)
+
+    /**
+     * The fasting clock, recomputed every minute against the last logged meal.
+     *
+     * A countdown that only moves when something else happens to redraw the screen reads as broken,
+     * so this ticks on its own rather than waiting for the ledger to change.
+     */
+    val fastingStatus: StateFlow<FastingStatus> = combine(
+        fastingPlan,
+        container.database.foodDao().observeLogBetween(today.minusDays(2), today.plusDays(1)),
+        tickerFlow(),
+    ) { plan, entries, now ->
+        val lastMeal = entries.maxByOrNull { it.loggedAtEpochMillis }?.let { entry ->
+            Instant.ofEpochMilli(entry.loggedAtEpochMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        }
+        Fasting.status(plan, lastMeal, now)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        Fasting.status(FastingPlan.OFF, null, LocalDateTime.now()),
+    )
+
+    fun recommendedFastingPlan(): FastingPlan =
+        Fasting.recommend(state.value.settings.profile?.goalPace ?: GoalPace.LOSE_STEADY)
+
+    fun setFastingPlan(plan: FastingPlan) {
+        viewModelScope.launch { container.settingsStore.setFastingPlan(plan) }
+    }
+
+    // ---- Weigh-in prompting ---------------------------------------------------------------
+
+    private val _weighInDraft = MutableStateFlow("")
+    val weighInDraft: StateFlow<String> = _weighInDraft.asStateFlow()
+
+    fun updateWeighInDraft(value: String) {
+        _weighInDraft.value = value
+    }
+
+    /**
+     * Whether to ask for a weight right now. Recomputed on the same minute tick as the fast, so a
+     * snooze that has run out surfaces without the user having to leave and re-enter the app.
+     */
+    val weighInPrompt: StateFlow<WeighInPrompt> = combine(
+        container.database.weightDao().observeAll(),
+        container.settingsStore.weighInSnooze,
+        tickerFlow(),
+    ) { weights, snooze, now ->
+        val (snoozeAt, count) = snooze
+        WeighInReminder.evaluate(
+            now = now,
+            lastWeighIn = weights.maxByOrNull { it.date }?.date,
+            lastSnoozeAt = snoozeAt?.let {
+                Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalDateTime()
+            },
+            snoozeCount = count,
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), WeighInPrompt.None)
+
+    fun submitWeighIn() {
+        val pounds = _weighInDraft.value.toDoubleOrNull() ?: return
+        logWeightPounds(pounds)
+        _weighInDraft.value = ""
+        viewModelScope.launch { container.settingsStore.clearWeighInSnooze() }
+    }
+
+    /** Puts the ask off by an hour. It comes back, and keeps coming back, until a number lands. */
+    fun snoozeWeighIn() {
+        val attempt = (weighInPrompt.value as? WeighInPrompt.Due)?.attempt ?: 0
+        viewModelScope.launch {
+            container.settingsStore.snoozeWeighIn(System.currentTimeMillis(), attempt + 1)
+        }
+    }
+
+    /** One emission a minute — enough for a countdown, cheap enough to leave running. */
+    private fun tickerFlow(): Flow<LocalDateTime> = flow {
+        while (true) {
+            emit(LocalDateTime.now())
+            delay(60_000)
+        }
     }
 
     private fun refreshPrescription() {

@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dev.zephyr.core.model.ActivityLevel
+import dev.zephyr.core.fasting.FastingPlan
 import dev.zephyr.core.model.GoalPace
 import dev.zephyr.core.model.Sex
 import dev.zephyr.core.model.UnitSystem
@@ -76,6 +77,12 @@ class SettingsStore(private val context: Context) {
          * by anyone who downloads it and would be billed to whoever shipped it.
          */
         val ANTHROPIC_KEY = stringPreferencesKey("anthropic_api_key")
+
+        val FASTING_PLAN = stringPreferencesKey("fasting_plan")
+
+        /** Snooze state for the weigh-in ask, so "Later" survives the app being killed. */
+        val WEIGH_SNOOZE_AT = longPreferencesKey("weigh_snooze_at")
+        val WEIGH_SNOOZE_COUNT = intPreferencesKey("weigh_snooze_count")
     }
 
     val settings: Flow<ZephyrSettings> = context.dataStore.data.map { prefs ->
@@ -198,6 +205,35 @@ class SettingsStore(private val context: Context) {
     /** Observable so the Food screen can offer photo estimation only once a key exists. */
     val anthropicKey: Flow<String?> = context.dataStore.data
         .map { it[Keys.ANTHROPIC_KEY]?.takeIf(String::isNotBlank) }
+
+    val fastingPlan: Flow<FastingPlan> = context.dataStore.data.map { prefs ->
+        prefs[Keys.FASTING_PLAN]
+            ?.let { runCatching { FastingPlan.valueOf(it) }.getOrNull() }
+            ?: FastingPlan.OFF
+    }
+
+    suspend fun setFastingPlan(plan: FastingPlan) {
+        context.dataStore.edit { it[Keys.FASTING_PLAN] = plan.name }
+    }
+
+    /** Epoch millis of the last "Later", and how many times today's ask has been put off. */
+    val weighInSnooze: Flow<Pair<Long?, Int>> = context.dataStore.data.map { prefs ->
+        prefs[Keys.WEIGH_SNOOZE_AT] to (prefs[Keys.WEIGH_SNOOZE_COUNT] ?: 0)
+    }
+
+    suspend fun snoozeWeighIn(atEpochMillis: Long, count: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.WEIGH_SNOOZE_AT] = atEpochMillis
+            prefs[Keys.WEIGH_SNOOZE_COUNT] = count
+        }
+    }
+
+    suspend fun clearWeighInSnooze() {
+        context.dataStore.edit { prefs ->
+            prefs.remove(Keys.WEIGH_SNOOZE_AT)
+            prefs.remove(Keys.WEIGH_SNOOZE_COUNT)
+        }
+    }
 
     suspend fun setAnthropicKey(key: String?) {
         context.dataStore.edit { prefs ->

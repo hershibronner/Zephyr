@@ -60,7 +60,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.zephyr.fitness.ui.Units
 import app.zephyr.fitness.ui.ZephyrViewModel
 import app.zephyr.fitness.ui.screens.ObStep
+import app.zephyr.fitness.ui.SessionReport
 import app.zephyr.fitness.ui.screens.CaptureMode
+import app.zephyr.fitness.ui.screens.FastingCard
+import app.zephyr.fitness.ui.screens.FastingPickerDialog
+import app.zephyr.fitness.ui.screens.SessionReportScreen
+import app.zephyr.fitness.ui.screens.WeighInPromptDialog
 import app.zephyr.fitness.ui.screens.CaptureScreen
 import app.zephyr.fitness.ui.screens.EstimateDialog
 import app.zephyr.fitness.ui.screens.FoodScreen
@@ -74,6 +79,8 @@ import app.zephyr.fitness.ui.theme.Z
 import app.zephyr.fitness.ui.theme.ZephyrTheme
 import app.zephyr.fitness.ui.FoodFlow
 import app.zephyr.fitness.update.UpdateState
+import dev.zephyr.core.trend.WeighInPrompt
+import dev.zephyr.core.trend.WeighInReminder
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -229,6 +236,13 @@ private fun Home(
     val hasApiKey by viewModel.hasApiKey.collectAsStateWithLifecycle()
     var captureMode by remember { mutableStateOf(CaptureMode.BARCODE) }
     var showKeyDialog by remember { mutableStateOf(false) }
+    var showFastingPicker by remember { mutableStateOf(false) }
+    val selectedActivity by viewModel.selectedActivity.collectAsStateWithLifecycle()
+    val openSession by viewModel.openSession.collectAsStateWithLifecycle()
+    val fastingStatus by viewModel.fastingStatus.collectAsStateWithLifecycle()
+    val fastingPlan by viewModel.fastingPlan.collectAsStateWithLifecycle()
+    val weighInPrompt by viewModel.weighInPrompt.collectAsStateWithLifecycle()
+    val weighInDraft by viewModel.weighInDraft.collectAsStateWithLifecycle()
     val needsInstallPermission by viewModel.needsInstallPermission.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.TODAY) }
@@ -254,6 +268,12 @@ private fun Home(
                 onInstall = viewModel::installUpdate,
                 onDismiss = viewModel::dismissUpdate,
             )
+
+            if (tab == Tab.TODAY) {
+                Box(Modifier.padding(horizontal = 22.dp, vertical = 4.dp)) {
+                    FastingCard(fastingStatus) { showFastingPicker = true }
+                }
+            }
 
             when (tab) {
                 Tab.TODAY -> TodayScreen(
@@ -286,11 +306,13 @@ private fun Home(
                 Tab.MOVE -> MoveScreen(
                     tracking = tracking,
                     history = history,
+                    selected = selectedActivity,
                     hasLocationPermission = hasLocation,
+                    onSelect = viewModel::selectActivity,
                     onRequestPermission = onRequestLocation,
-                    onStart = { type ->
+                    onStart = {
                         if (hasLocation) {
-                            TrackingService.start(context, type, viewModel.trackingWeightKg())
+                            TrackingService.start(context, selectedActivity, viewModel.trackingWeightKg())
                         } else {
                             onRequestLocation()
                         }
@@ -307,6 +329,7 @@ private fun Home(
                         TrackingService.send(context, TrackingService.ACTION_STOP)
                         viewModel.discardTracking()
                     },
+                    onOpenSession = viewModel::openSessionReport,
                     modifier = Modifier.weight(1f),
                 )
                 // The remaining tabs are still being ported from the prototype; the screen says so
@@ -381,6 +404,42 @@ private fun Home(
                     Text("OK", fontWeight = FontWeight.Bold)
                 }
             },
+        )
+    }
+
+    openSession?.let { report ->
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Z.Page)
+                .statusBarsPadding(),
+        ) {
+            SessionReportScreen(
+                session = report.session,
+                points = report.points,
+                verdict = report.verdict,
+                onClose = viewModel::closeSessionReport,
+            )
+        }
+    }
+
+    if (showFastingPicker) {
+        FastingPickerDialog(
+            current = fastingPlan,
+            recommended = viewModel.recommendedFastingPlan(),
+            onPick = viewModel::setFastingPlan,
+            onDismiss = { showFastingPicker = false },
+        )
+    }
+
+    (weighInPrompt as? WeighInPrompt.Due)?.let { due ->
+        WeighInPromptDialog(
+            attempt = due.attempt,
+            message = WeighInReminder.message(due.attempt),
+            value = weighInDraft,
+            onValueChange = viewModel::updateWeighInDraft,
+            onSubmit = viewModel::submitWeighIn,
+            onLater = viewModel::snoozeWeighIn,
         )
     }
 
