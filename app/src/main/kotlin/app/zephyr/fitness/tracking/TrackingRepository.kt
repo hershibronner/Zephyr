@@ -4,6 +4,7 @@ import dev.zephyr.core.activity.ActivityCalories
 import dev.zephyr.core.activity.ActivityType
 import dev.zephyr.core.activity.Geo
 import dev.zephyr.core.activity.GeoPoint
+import dev.zephyr.core.activity.Pace
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,7 +31,7 @@ data class TrackingState(
     val gpsAccuracyMetres: Float? = null,
 ) {
     val isActive: Boolean get() = phase != TrackingPhase.IDLE
-    val averagePaceSecondsPerKm: Double? get() = Geo.secondsPerKm(distanceMetres, elapsedSeconds)
+    val averagePaceSecondsPerKm: Double? get() = Pace.secondsPerKm(distanceMetres, elapsedSeconds)
 }
 
 /**
@@ -153,7 +154,7 @@ class TrackingRepository {
 
         val seconds = (newest.timestampMillis - window.first().timestampMillis) / 1000
         if (seconds <= 0) return null
-        return Geo.secondsPerKm(Geo.summarise(window).distanceMetres, seconds)
+        return Pace.secondsPerKm(Geo.summarise(window).distanceMetres, seconds)
     }
 
     private companion object {

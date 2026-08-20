@@ -21,7 +21,7 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import dev.zephyr.core.activity.ActivityType
-import dev.zephyr.core.activity.Geo
+import dev.zephyr.core.activity.Pace
 import dev.zephyr.core.activity.GeoPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -203,7 +203,7 @@ class TrackingService : Service() {
                     miles,
                     minutes,
                     seconds,
-                    Geo.format(state.averagePaceSecondsPerKm?.let { it * 1.609344 }),
+                    Pace.format(state.averagePaceSecondsPerKm?.let { it * 1.609344 }),
                 ),
             )
             .setSmallIcon(R.drawable.ic_notification)
