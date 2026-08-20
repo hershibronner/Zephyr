@@ -79,6 +79,17 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
     private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val update: StateFlow<UpdateState> = _update.asStateFlow()
 
+    /**
+     * True when Android still needs the user to allow this app to install packages. Surfaced rather
+     * than handled silently: the permission screen opens in Settings, and without a word of
+     * explanation the trip back looks like the Install button simply did nothing.
+     */
+    private val _needsInstallPermission = MutableStateFlow(false)
+    val needsInstallPermission: StateFlow<Boolean> = _needsInstallPermission.asStateFlow()
+
+    /** A version the user waved away, so re-checking doesn't resurrect the same banner. */
+    private var dismissedVersion: Int? = null
+
     init {
         refreshPrescription()
         checkForUpdate()
@@ -87,15 +98,25 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
     /**
      * Looks for a newer build. Silent when there isn't one — an update check that announces itself
      * every launch is just noise, so only an actual update surfaces in the UI.
+     *
+     * Safe to call on every resume: a download or a finished download is never interrupted, and a
+     * version the user already dismissed stays dismissed.
      */
     fun checkForUpdate() {
-        if (_update.value is UpdateState.Downloading) return
+        when (_update.value) {
+            is UpdateState.Downloading, is UpdateState.ReadyToInstall, is UpdateState.Checking -> return
+            else -> Unit
+        }
         viewModelScope.launch {
             _update.value = UpdateState.Checking
             _update.value = runCatching { container.updateManager.check() }
                 .fold(
                     onSuccess = { manifest ->
-                        if (manifest == null) UpdateState.UpToDate else UpdateState.Available(manifest)
+                        when {
+                            manifest == null -> UpdateState.UpToDate
+                            manifest.versionCode == dismissedVersion -> UpdateState.UpToDate
+                            else -> UpdateState.Available(manifest)
+                        }
                     },
                     // A failed check is not worth interrupting anyone over; they came here to log food.
                     onFailure = { UpdateState.Failed(it.message ?: "Could not reach the update server") },
@@ -125,13 +146,21 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
     fun installUpdate(file: File) {
         val manager = container.updateManager
         if (!manager.canInstall()) {
+            _needsInstallPermission.value = true
             manager.requestInstallPermission()
             return
         }
+        _needsInstallPermission.value = false
         manager.install(file)
     }
 
+    /** Re-read on resume, so returning from the Settings screen clears the prompt. */
+    fun refreshInstallPermission() {
+        if (container.updateManager.canInstall()) _needsInstallPermission.value = false
+    }
+
     fun dismissUpdate() {
+        (_update.value as? UpdateState.Available)?.let { dismissedVersion = it.manifest.versionCode }
         _update.value = UpdateState.Idle
     }
 

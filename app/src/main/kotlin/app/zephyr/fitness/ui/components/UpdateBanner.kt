@@ -36,6 +36,7 @@ import java.io.File
 @Composable
 fun UpdateBanner(
     state: UpdateState,
+    needsPermission: Boolean,
     onDownload: () -> Unit,
     onInstall: (File) -> Unit,
     onDismiss: () -> Unit,
@@ -100,12 +101,16 @@ fun UpdateBanner(
 
                     is UpdateState.ReadyToInstall -> {
                         Text(
-                            "Ready to install",
+                            if (needsPermission) "Allow Zephyr to install updates" else "Ready to install",
                             color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "Takes a few seconds. Your data stays put.",
-                            color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp,
+                            if (needsPermission) {
+                                "Android asks once. Flip the switch, come back, then tap Install."
+                            } else {
+                                "Takes a few seconds. Your data stays put."
+                            },
+                            color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp, lineHeight = 16.sp,
                         )
                     }
 
@@ -115,7 +120,8 @@ fun UpdateBanner(
 
             when (state) {
                 is UpdateState.Available -> BannerButton("Get it", onDownload)
-                is UpdateState.ReadyToInstall -> BannerButton("Install") { onInstall(state.file) }
+                is UpdateState.ReadyToInstall ->
+                    BannerButton(if (needsPermission) "Allow" else "Install") { onInstall(state.file) }
                 else -> Unit
             }
 

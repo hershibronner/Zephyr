@@ -114,6 +114,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.syncSteps()
+        // Also on resume, not just cold start: phones keep apps alive for days, and an update the
+        // user cannot see until they force-quit is an update that never gets installed. This also
+        // covers coming back from the system permission screen mid-install.
+        viewModel.checkForUpdate()
+        viewModel.refreshInstallPermission()
     }
 
     /**
@@ -137,6 +142,7 @@ private fun Home(viewModel: ZephyrViewModel) {
     val loggedDates by viewModel.loggedDates.collectAsStateWithLifecycle()
     val prescription by viewModel.prescription.collectAsStateWithLifecycle()
     val updateState by viewModel.update.collectAsStateWithLifecycle()
+    val needsInstallPermission by viewModel.needsInstallPermission.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.TODAY) }
     var showQuickAdd by remember { mutableStateOf(false) }
@@ -154,6 +160,7 @@ private fun Home(viewModel: ZephyrViewModel) {
 
             UpdateBanner(
                 state = updateState,
+                needsPermission = needsInstallPermission,
                 onDownload = {
                     (updateState as? UpdateState.Available)?.let { viewModel.downloadUpdate(it.manifest) }
                 },
