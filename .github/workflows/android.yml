@@ -10,9 +10,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
+    env:
+      # The run number is the version. It only ever goes up, which is exactly what an installed app
+      # needs in order to recognise a build as newer than itself.
+      ZEPHYR_VERSION_CODE: ${{ github.run_number }}
+      ZEPHYR_VERSION_NAME: 0.1.${{ github.run_number }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +46,43 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug
 
+      # Publishing a release rather than an artifact is what makes the app self-updating: artifacts
+      # need a signed-in browser and arrive zipped, while a release asset is a plain URL the phone
+      # can fetch on its own.
+      - name: Publish release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/claude/fitness-goals-android-app-mn0jn9'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp app/build/outputs/apk/debug/app-debug.apk release/zephyr.apk
+
+          SHA=$(sha256sum release/zephyr.apk | cut -d' ' -f1)
+          SIZE=$(stat -c%s release/zephyr.apk)
+          TAG="v${ZEPHYR_VERSION_NAME}"
+          NOTES=$(git log -1 --pretty=%s)
+
+          # The app reads this and nothing else, so the download URL and the checksum it will be
+          # verified against are decided here, together, by the same build that produced the APK.
+          jq -n \
+            --argjson versionCode "${ZEPHYR_VERSION_CODE}" \
+            --arg versionName "${ZEPHYR_VERSION_NAME}" \
+            --arg apkUrl "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/zephyr.apk" \
+            --arg sha256 "${SHA}" \
+            --argjson sizeBytes "${SIZE}" \
+            --arg notes "${NOTES}" \
+            '{versionCode:$versionCode, versionName:$versionName, apkUrl:$apkUrl, sha256:$sha256, sizeBytes:$sizeBytes, notes:$notes}' \
+            > release/update.json
+
+          gh release create "$TAG" \
+            release/zephyr.apk release/update.json \
+            --title "Zephyr ${ZEPHYR_VERSION_NAME}" \
+            --notes "${NOTES}"
+
+      # Kept for pull requests and other branches, which do not publish a release.
       - name: Upload APK
+        if: github.event_name != 'push' || github.ref != 'refs/heads/claude/fitness-goals-android-app-mn0jn9'
         uses: actions/upload-artifact@v4
         with:
           name: zephyr-debug-apk

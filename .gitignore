@@ -11,6 +11,9 @@ captures/
 *.aab
 *.keystore
 !debug.keystore
+# Committed on purpose: a stable signature is what lets the app update itself in place. Throwaway
+# testing key with a published password — the Play signing key lives in repo secrets, never here.
+!app/zephyr-dev.keystore
 keystore.properties
 
 # Kotlin compiler daemon working directory

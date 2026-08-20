@@ -6,6 +6,11 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// CI stamps the build number in; a local build stays at 1 so it never looks newer than a real
+// release and trigger a pointless self-update.
+val zephyrVersionCode = (System.getenv("ZEPHYR_VERSION_CODE") ?: "1").toInt()
+val zephyrVersionName = System.getenv("ZEPHYR_VERSION_NAME") ?: "0.1.0-dev"
+
 android {
     namespace = "app.zephyr.fitness"
     compileSdk = 35
@@ -14,10 +19,35 @@ android {
         applicationId = "app.zephyr.fitness"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = zephyrVersionCode
+        versionName = zephyrVersionName
+
+        // Always the newest release, so the URL never has to change as versions roll forward.
+        buildConfigField(
+            "String",
+            "UPDATE_MANIFEST_URL",
+            "\"https://github.com/hershibronner/Zephyr/releases/latest/download/update.json\"",
+        )
 
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        // A fixed key, committed to the repo on purpose.
+        //
+        // Android refuses to upgrade an installed app in place if the new APK carries a different
+        // signature, and the stock debug keystore is generated fresh on every machine — so a CI
+        // runner would sign each build with a new key and every self-update would die on
+        // "App not installed". A stable key is what makes updating without uninstalling possible.
+        //
+        // This is a throwaway testing key with a published password and no value to protect. The
+        // Play release is signed with a real key held in repo secrets, never this one.
+        create("dev") {
+            storeFile = file("zephyr-dev.keystore")
+            storePassword = "zephyrdev"
+            keyAlias = "zephyrdev"
+            keyPassword = "zephyrdev"
+        }
     }
 
     buildTypes {
@@ -25,6 +55,7 @@ android {
             // Keeps a debug build installable alongside a release one from the Play Store.
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            signingConfig = signingConfigs.getByName("dev")
         }
         release {
             isMinifyEnabled = true
@@ -44,6 +75,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

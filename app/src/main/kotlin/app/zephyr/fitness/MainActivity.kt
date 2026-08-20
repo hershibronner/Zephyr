@@ -59,8 +59,10 @@ import app.zephyr.fitness.ui.ZephyrViewModel
 import app.zephyr.fitness.ui.screens.ObStep
 import app.zephyr.fitness.ui.screens.OnboardingScreen
 import app.zephyr.fitness.ui.screens.TodayScreen
+import app.zephyr.fitness.ui.components.UpdateBanner
 import app.zephyr.fitness.ui.theme.Z
 import app.zephyr.fitness.ui.theme.ZephyrTheme
+import app.zephyr.fitness.update.UpdateState
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -134,6 +136,7 @@ private fun Home(viewModel: ZephyrViewModel) {
     val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
     val loggedDates by viewModel.loggedDates.collectAsStateWithLifecycle()
     val prescription by viewModel.prescription.collectAsStateWithLifecycle()
+    val updateState by viewModel.update.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.TODAY) }
     var showQuickAdd by remember { mutableStateOf(false) }
@@ -148,6 +151,15 @@ private fun Home(viewModel: ZephyrViewModel) {
     ) {
         Column(Modifier.fillMaxSize().statusBarsPadding()) {
             TopBar(today)
+
+            UpdateBanner(
+                state = updateState,
+                onDownload = {
+                    (updateState as? UpdateState.Available)?.let { viewModel.downloadUpdate(it.manifest) }
+                },
+                onInstall = viewModel::installUpdate,
+                onDismiss = viewModel::dismissUpdate,
+            )
 
             when (tab) {
                 Tab.TODAY -> TodayScreen(

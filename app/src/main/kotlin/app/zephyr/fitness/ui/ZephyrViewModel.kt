@@ -11,6 +11,8 @@ import app.zephyr.fitness.data.db.WeightEntity
 import app.zephyr.fitness.domain.TodayState
 import app.zephyr.fitness.ui.screens.ObDraft
 import app.zephyr.fitness.ui.screens.ObStep
+import app.zephyr.fitness.update.UpdateManifest
+import app.zephyr.fitness.update.UpdateState
 import dev.zephyr.core.activity.ActivityType
 import dev.zephyr.core.energy.BasalMetabolicRate
 import dev.zephyr.core.energy.CalorieTarget
@@ -42,6 +44,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -73,8 +76,63 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
     private val _prescription = MutableStateFlow<Prescription?>(null)
     val prescription: StateFlow<Prescription?> = _prescription.asStateFlow()
 
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.Idle)
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+
     init {
         refreshPrescription()
+        checkForUpdate()
+    }
+
+    /**
+     * Looks for a newer build. Silent when there isn't one — an update check that announces itself
+     * every launch is just noise, so only an actual update surfaces in the UI.
+     */
+    fun checkForUpdate() {
+        if (_update.value is UpdateState.Downloading) return
+        viewModelScope.launch {
+            _update.value = UpdateState.Checking
+            _update.value = runCatching { container.updateManager.check() }
+                .fold(
+                    onSuccess = { manifest ->
+                        if (manifest == null) UpdateState.UpToDate else UpdateState.Available(manifest)
+                    },
+                    // A failed check is not worth interrupting anyone over; they came here to log food.
+                    onFailure = { UpdateState.Failed(it.message ?: "Could not reach the update server") },
+                )
+        }
+    }
+
+    fun downloadUpdate(manifest: UpdateManifest) {
+        if (_update.value is UpdateState.Downloading) return
+        viewModelScope.launch {
+            _update.value = UpdateState.Downloading(manifest, 0f)
+            _update.value = runCatching {
+                container.updateManager.download(manifest) { fraction ->
+                    _update.value = UpdateState.Downloading(manifest, fraction)
+                }
+            }.fold(
+                onSuccess = { file -> UpdateState.ReadyToInstall(manifest, file) },
+                onFailure = { UpdateState.Failed(it.message ?: "Download failed") },
+            )
+        }
+    }
+
+    /**
+     * Hands the verified APK to the system installer, first sending the user to grant install
+     * permission if they haven't — without it the installer silently refuses.
+     */
+    fun installUpdate(file: File) {
+        val manager = container.updateManager
+        if (!manager.canInstall()) {
+            manager.requestInstallPermission()
+            return
+        }
+        manager.install(file)
+    }
+
+    fun dismissUpdate() {
+        _update.value = UpdateState.Idle
     }
 
     fun updateDraft(draft: ObDraft) {

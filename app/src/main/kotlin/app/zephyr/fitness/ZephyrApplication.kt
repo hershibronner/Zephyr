@@ -8,6 +8,7 @@ import app.zephyr.fitness.data.db.ZephyrDatabase
 import app.zephyr.fitness.data.prefs.SettingsStore
 import app.zephyr.fitness.data.steps.StepRepository
 import app.zephyr.fitness.domain.TodayRepository
+import app.zephyr.fitness.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +32,7 @@ class AppContainer(private val context: Context) {
     val notifier: Notifier by lazy { Notifier(context) }
     val stepRepository: StepRepository by lazy { StepRepository(context, database.stepsDao()) }
     val todayRepository: TodayRepository by lazy { TodayRepository(database, settingsStore) }
+    val updateManager: UpdateManager by lazy { UpdateManager(context) }
 
     /** Set by the tracking service so the coach knows to stay quiet mid-run. */
     val trackingActive = MutableStateFlow(false)
