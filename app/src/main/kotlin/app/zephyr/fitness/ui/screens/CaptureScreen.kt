@@ -1,6 +1,5 @@
 package app.zephyr.fitness.ui.screens
 
-import android.util.Base64
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -45,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.zephyr.fitness.data.food.MealPhoto
 import app.zephyr.fitness.ui.theme.Z
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScanning
@@ -283,9 +283,13 @@ private fun takePhoto(
                 val bytes = image.planes.firstOrNull()?.buffer?.let { buffer ->
                     ByteArray(buffer.remaining()).also { buffer.get(it) }
                 }
+                // Read the rotation before closing: the sensor rarely stores the frame upright, and
+                // a raw byte copy discards the metadata that says so.
+                val rotation = image.imageInfo.rotationDegrees
                 image.close()
+
                 if (bytes != null) {
-                    onPhoto(Base64.encodeToString(bytes, Base64.NO_WRAP))
+                    MealPhoto.prepare(bytes, rotation)?.let(onPhoto)
                 }
             }
 

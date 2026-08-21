@@ -39,6 +39,8 @@ import app.zephyr.fitness.ui.components.EnergyRing
 import app.zephyr.fitness.ui.components.Kicker
 import app.zephyr.fitness.ui.components.SectionHeader
 import app.zephyr.fitness.ui.components.StatTile
+import app.zephyr.fitness.ui.components.animatedCount
+import app.zephyr.fitness.ui.components.entrance
 import app.zephyr.fitness.ui.components.ZCard
 import app.zephyr.fitness.ui.components.heroGlow
 import app.zephyr.fitness.ui.theme.Z
@@ -86,13 +88,16 @@ fun TodayScreen(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item {
-            DateStrip(selectedDate, today, loggedDates, onSelectDate)
+            Box(Modifier.entrance(0)) {
+                DateStrip(selectedDate, today, loggedDates, onSelectDate)
+            }
         }
 
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .entrance(1)
                     .clip(RoundedCornerShape(Z.CardRadius))
                     .heroGlow(over)
                     .padding(horizontal = 22.dp, vertical = 22.dp),
@@ -112,7 +117,8 @@ fun TodayScreen(
                     over = over,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        val text = Units.number(abs(balance.remainingKcal))
+                        val counted = animatedCount(abs(balance.remainingKcal))
+                        val text = Units.number(counted)
                         Text(
                             text,
                             color = Color.White,
@@ -142,7 +148,10 @@ fun TodayScreen(
         }
 
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.entrance(2),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     // A step tile stuck on zero looks like a broken app. When the permission is the
                     // reason, the tile says so and fixes it on tap rather than quietly reading nothing.

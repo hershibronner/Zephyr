@@ -6,6 +6,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -110,8 +112,16 @@ fun StatTile(
     fraction: Float? = null,
     icon: (@Composable () -> Unit)? = null,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val animatedFraction by animateFloatAsState(
+        targetValue = fraction?.coerceIn(0f, 1f) ?: 0f,
+        animationSpec = spring(dampingRatio = 0.85f, stiffness = 150f),
+        label = "tileFraction",
+    )
+
     Column(
         modifier = modifier
+            .pressScale(interaction)
             .clip(RoundedCornerShape(Z.TileRadius))
             .background(background)
             .padding(16.dp),
@@ -132,7 +142,7 @@ fun StatTile(
 
             if (fraction != null) {
                 Text(
-                    text = "${(fraction.coerceIn(0f, 1f) * 100).toInt()}%",
+                    text = "${(animatedFraction * 100).toInt()}%",
                     color = foreground.copy(alpha = 0.7f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -151,8 +161,15 @@ fun ZCard(
     background: Color = Z.Card,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val interaction = remember { MutableInteractionSource() }
     Surface(
-        modifier = if (onClick != null) modifier.clickable(onClick = onClick) else modifier,
+        modifier = if (onClick != null) {
+            modifier
+                .pressScale(interaction)
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+        } else {
+            modifier
+        },
         shape = RoundedCornerShape(Z.CardRadius),
         color = background,
         shadowElevation = 1.dp,

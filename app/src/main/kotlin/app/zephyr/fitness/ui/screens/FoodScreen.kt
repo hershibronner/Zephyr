@@ -35,6 +35,7 @@ import app.zephyr.fitness.ui.Units
 import app.zephyr.fitness.ui.components.Kicker
 import app.zephyr.fitness.ui.components.ProgressBar
 import app.zephyr.fitness.ui.components.SectionHeader
+import app.zephyr.fitness.ui.components.entrance
 import app.zephyr.fitness.ui.theme.Z
 import dev.zephyr.core.ledger.EnergyBalance
 import java.util.Locale
@@ -57,6 +58,7 @@ fun FoodScreen(
     onQuickAdd: () -> Unit,
     onPickRecent: (FoodEntity) -> Unit,
     onDelete: (FoodLogEntity) -> Unit,
+    onSetUpPhotos: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -64,10 +66,13 @@ fun FoodScreen(
         contentPadding = PaddingValues(start = 22.dp, end = 22.dp, top = 6.dp, bottom = 130.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        item { Totals(balance) }
+        item { Box(Modifier.entrance(0)) { Totals(balance) } }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.entrance(1),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 ActionTile(
                     label = if (canUsePhotos) "Scan or shoot" else "Scan barcode",
                     sublabel = if (canUsePhotos) "Packet or plate" else "Packaged food",
@@ -86,6 +91,36 @@ fun FoodScreen(
                     modifier = Modifier.weight(1f),
                     onClick = onQuickAdd,
                 )
+            }
+        }
+
+        if (!canUsePhotos) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .entrance(2)
+                        .clip(RoundedCornerShape(Z.CardRadius))
+                        .background(Z.VioletSoft)
+                        .clickable(onClick = onSetUpPhotos)
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        "Photograph a meal, get the calories",
+                        color = Z.VioletInk, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "One picture and Zephyr breaks the plate down for you. Needs a free " +
+                            "Anthropic API key — takes about two minutes to set up.",
+                        color = Z.VioletInk.copy(alpha = 0.82f), fontSize = 13.sp, lineHeight = 18.sp,
+                    )
+                    Text(
+                        "Set it up →",
+                        color = Z.VioletInk, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             }
         }
 

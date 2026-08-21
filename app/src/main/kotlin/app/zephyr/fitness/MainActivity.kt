@@ -8,8 +8,21 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -269,13 +283,28 @@ private fun Home(
                 onDismiss = viewModel::dismissUpdate,
             )
 
-            if (tab == Tab.TODAY) {
+            AnimatedVisibility(
+                visible = tab == Tab.TODAY,
+                enter = fadeIn(tween(220)) + expandVertically(),
+                exit = fadeOut(tween(120)) + shrinkVertically(),
+            ) {
                 Box(Modifier.padding(horizontal = 22.dp, vertical = 4.dp)) {
                     FastingCard(fastingStatus) { showFastingPicker = true }
                 }
             }
 
-            when (tab) {
+            AnimatedContent(
+                targetState = tab,
+                modifier = Modifier.weight(1f),
+                transitionSpec = {
+                    val forward = targetState.ordinal > initialState.ordinal
+                    val offset = if (forward) 1 else -1
+                    (slideInHorizontally { (it / 12) * offset } + fadeIn(tween(220))) togetherWith
+                        (fadeOut(tween(140)))
+                },
+                label = "tab",
+            ) { current ->
+            when (current) {
                 Tab.TODAY -> TodayScreen(
                     state = state,
                     selectedDate = selectedDate,
@@ -290,7 +319,7 @@ private fun Home(
                     onOpenPlan = { tab = Tab.PLAN },
                     onOpenFood = { tab = Tab.FOOD },
                     onDeleteFood = viewModel::deleteFood,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 )
                 Tab.FOOD -> FoodScreen(
                     balance = state.balance,
@@ -301,7 +330,8 @@ private fun Home(
                     onQuickAdd = { showQuickAdd = true },
                     onPickRecent = viewModel::startPortioning,
                     onDelete = viewModel::deleteFood,
-                    modifier = Modifier.weight(1f),
+                    onSetUpPhotos = { showKeyDialog = true },
+                    modifier = Modifier.fillMaxSize(),
                 )
                 Tab.MOVE -> MoveScreen(
                     tracking = tracking,
@@ -330,11 +360,12 @@ private fun Home(
                         viewModel.discardTracking()
                     },
                     onOpenSession = viewModel::openSessionReport,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxSize(),
                 )
                 // The remaining tabs are still being ported from the prototype; the screen says so
                 // rather than presenting an empty shell as though it were finished.
-                else -> ComingSoon(tab, Modifier.weight(1f))
+                else -> ComingSoon(current, Modifier.fillMaxSize())
+            }
             }
         }
 
@@ -532,20 +563,39 @@ private fun BottomNav(current: Tab, onSelect: (Tab) -> Unit, modifier: Modifier 
     ) {
         Tab.entries.forEach { entry ->
             val on = entry == current
+            val fill by animateColorAsState(
+                targetValue = if (on) Color.White else Color.Transparent,
+                animationSpec = tween(260),
+                label = "navFill",
+            )
+            val tint by animateColorAsState(
+                targetValue = if (on) Z.Nav else Color.White.copy(alpha = 0.55f),
+                animationSpec = tween(260),
+                label = "navTint",
+            )
+            val iconScale by animateFloatAsState(
+                targetValue = if (on) 1.1f else 1f,
+                animationSpec = spring(dampingRatio = 0.45f, stiffness = 500f),
+                label = "navScale",
+            )
+
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(52.dp)
                     .clip(RoundedCornerShape(26.dp))
-                    .background(if (on) Color.White else Color.Transparent)
-                    .clickable { onSelect(entry) },
+                    .background(fill)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { onSelect(entry) },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     entry.icon,
                     contentDescription = entry.label,
-                    tint = if (on) Z.Nav else Color.White.copy(alpha = 0.55f),
-                    modifier = Modifier.size(21.dp),
+                    tint = tint,
+                    modifier = Modifier.size(21.dp).scale(iconScale),
                 )
             }
         }

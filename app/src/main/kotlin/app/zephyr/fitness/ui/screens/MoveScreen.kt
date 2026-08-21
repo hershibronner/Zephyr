@@ -44,6 +44,9 @@ import app.zephyr.fitness.ui.Units
 import app.zephyr.fitness.ui.components.Kicker
 import app.zephyr.fitness.ui.components.SectionHeader
 import app.zephyr.fitness.ui.components.ZCard
+import app.zephyr.fitness.ui.components.entrance
+import app.zephyr.fitness.ui.components.popIn
+import app.zephyr.fitness.ui.components.pulsing
 import app.zephyr.fitness.ui.theme.Z
 import dev.zephyr.core.activity.ActivityType
 import dev.zephyr.core.activity.GeoPoint
@@ -108,7 +111,10 @@ private fun Idle(
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier.entrance(0),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 Kicker("Go move")
                 Text(
                     "What are we doing?",
@@ -119,7 +125,10 @@ private fun Idle(
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.entrance(1),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 TypeTile(ActivityType.RUN, selected, Z.VioletSoft, Z.VioletInk, Modifier.weight(1f), onSelect)
                 TypeTile(ActivityType.WALK, selected, Z.SkySoft, Z.SkyInk, Modifier.weight(1f), onSelect)
                 TypeTile(ActivityType.HIKE, selected, Z.GreenSoft, Z.GreenInk, Modifier.weight(1f), onSelect)
@@ -131,7 +140,7 @@ private fun Idle(
                 label = "Start " + selected.label.lowercase(),
                 background = Z.Nav,
                 foreground = Color.White,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().entrance(2),
                 onClick = onStart,
             )
         }
@@ -271,6 +280,7 @@ private fun LiveSession(
             Units.duration(state.elapsedSeconds),
             color = Z.Ink, fontSize = 70.sp, fontWeight = FontWeight.Black,
             letterSpacing = (-3.5).sp, lineHeight = 74.sp,
+            modifier = Modifier.popIn(state.elapsedSeconds / 60),
         )
 
         Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
@@ -342,6 +352,7 @@ private fun GpsPill(accuracyMetres: Float?) {
         Box(
             Modifier
                 .size(7.dp)
+                .pulsing()
                 .clip(CircleShape)
                 .background(colour),
         )
