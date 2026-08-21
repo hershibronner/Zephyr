@@ -91,6 +91,7 @@ import app.zephyr.fitness.tracking.TrackingService
 import app.zephyr.fitness.ui.components.UpdateBanner
 import app.zephyr.fitness.ui.theme.Z
 import app.zephyr.fitness.ui.theme.ZephyrTheme
+import app.zephyr.fitness.ui.EstimateSource
 import app.zephyr.fitness.ui.FoodFlow
 import app.zephyr.fitness.update.UpdateState
 import dev.zephyr.core.trend.WeighInPrompt
@@ -419,6 +420,7 @@ private fun Home(
     (foodFlow as? FoodFlow.Reviewing)?.let { reviewing ->
         EstimateDialog(
             estimate = reviewing.estimate,
+            offline = reviewing.source == EstimateSource.ON_DEVICE,
             onConfirm = { viewModel.logEstimate(reviewing.estimate) },
             onDismiss = viewModel::closeFoodFlow,
         )

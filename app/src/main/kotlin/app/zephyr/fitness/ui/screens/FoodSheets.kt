@@ -124,12 +124,14 @@ fun PortionDialog(
 @Composable
 fun EstimateDialog(
     estimate: MealEstimate,
+    offline: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val (badgeBg, badgeInk) = when (estimate.confidence.lowercase()) {
-        "high" -> Z.GreenSoft to Z.GreenInk
-        "low" -> Z.WarnSoft to Z.WarnInk
+    val (badgeBg, badgeInk) = when {
+        offline -> Z.WarnSoft to Z.WarnInk
+        estimate.confidence.lowercase() == "high" -> Z.GreenSoft to Z.GreenInk
+        estimate.confidence.lowercase() == "low" -> Z.WarnSoft to Z.WarnInk
         else -> Z.SkySoft to Z.SkyInk
     }
 
@@ -144,7 +146,11 @@ fun EstimateDialog(
                     letterSpacing = (-1.2).sp,
                 )
                 Text(
-                    "${estimate.confidence.replaceFirstChar { it.uppercase() }} confidence",
+                    if (offline) {
+                        "Offline guess"
+                    } else {
+                        "${estimate.confidence.replaceFirstChar { it.uppercase() }} confidence"
+                    },
                     color = badgeInk, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .clip(RoundedCornerShape(10.dp))
@@ -196,7 +202,13 @@ fun EstimateDialog(
                 }
 
                 Text(
-                    "Logged as separate items, so you can delete or correct any one of them.",
+                    if (offline) {
+                        "Recognised on your phone, so it can name the food but not judge how much " +
+                            "of it there is. Add an API key in settings for estimates that read " +
+                            "the actual portion."
+                    } else {
+                        "Logged as separate items, so you can delete or correct any one of them."
+                    },
                     color = Z.Faint, fontSize = 11.5.sp, lineHeight = 16.sp,
                 )
             }

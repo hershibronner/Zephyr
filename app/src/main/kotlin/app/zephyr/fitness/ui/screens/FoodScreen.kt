@@ -74,11 +74,11 @@ fun FoodScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 ActionTile(
-                    label = if (canUsePhotos) "Scan or shoot" else "Scan barcode",
-                    sublabel = if (canUsePhotos) "Packet or plate" else "Packaged food",
+                    label = "Scan or shoot",
+                    sublabel = "Packet or plate",
                     background = Z.VioletSoft,
                     foreground = Z.VioletInk,
-                    icon = if (canUsePhotos) Icons.Filled.CameraAlt else Icons.Filled.QrCodeScanner,
+                    icon = Icons.Filled.CameraAlt,
                     modifier = Modifier.weight(1f),
                     onClick = onScan,
                 )
@@ -107,12 +107,13 @@ fun FoodScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        "Photograph a meal, get the calories",
+                        "Sharper photo estimates",
                         color = Z.VioletInk, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "One picture and Zephyr breaks the plate down for you. Needs a free " +
-                            "Anthropic API key — takes about two minutes to set up.",
+                        "Photos already work offline, but your phone can only name the food — it " +
+                            "can't see how much is on the plate. An API key lets Claude read the " +
+                            "actual portion. About 2¢ a meal.",
                         color = Z.VioletInk.copy(alpha = 0.82f), fontSize = 13.sp, lineHeight = 18.sp,
                     )
                     Text(

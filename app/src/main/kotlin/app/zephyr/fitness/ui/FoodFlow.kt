@@ -3,6 +3,9 @@ package app.zephyr.fitness.ui
 import app.zephyr.fitness.data.db.FoodEntity
 import app.zephyr.fitness.data.food.MealEstimate
 
+/** Which engine produced an estimate. The two differ enough that the user must be told which. */
+enum class EstimateSource { CLAUDE, ON_DEVICE }
+
 /**
  * Where the user is in the act of adding food.
  *
@@ -20,7 +23,7 @@ sealed interface FoodFlow {
     data class Portioning(val food: FoodEntity, val grams: String) : FoodFlow
 
     /** A photo estimate, itemised and editable before anything is written to the ledger. */
-    data class Reviewing(val estimate: MealEstimate) : FoodFlow
+    data class Reviewing(val estimate: MealEstimate, val source: EstimateSource) : FoodFlow
 
     data class Failed(val reason: String) : FoodFlow
 }

@@ -11,6 +11,7 @@ import app.zephyr.fitness.data.db.PlannedSlotEntity
 import app.zephyr.fitness.data.db.RoutePointEntity
 import app.zephyr.fitness.data.db.SessionEntity
 import app.zephyr.fitness.data.db.WeightEntity
+import app.zephyr.fitness.data.food.EstimatedItem
 import app.zephyr.fitness.data.food.MealEstimate
 import app.zephyr.fitness.domain.TodayState
 import app.zephyr.fitness.tracking.TrackingState
@@ -329,10 +330,14 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
         viewModelScope.launch {
             val key = container.settingsStore.anthropicKey.first()
+
+            // With a key, Claude reads the plate properly. Without one the on-device labeller still
+            // gives something usable rather than blocking the feature behind a setup step.
             if (key.isNullOrBlank()) {
-                _foodFlow.value = FoodFlow.Failed("Add an Anthropic API key in Settings to use photos.")
+                _foodFlow.value = recogniseOnDevice(jpegBase64)
                 return@launch
             }
+
             _foodFlow.value = runCatching { container.mealPhotoAnalyser.analyse(jpegBase64, key) }
                 .fold(
                     onSuccess = { estimate ->
@@ -341,12 +346,38 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
                                 estimate.note.ifBlank { "No food found in that photo. Try again closer." },
                             )
                         } else {
-                            FoodFlow.Reviewing(estimate)
+                            FoodFlow.Reviewing(estimate, EstimateSource.CLAUDE)
                         }
                     },
-                    onFailure = { FoodFlow.Failed(it.message ?: "Could not read that photo") },
+                    // A network failure should not lose the meal when there is an offline path.
+                    onFailure = { recogniseOnDevice(jpegBase64) },
                 )
         }
+    }
+
+    /** Converts the offline guess into the same shape the review sheet already understands. */
+    private suspend fun recogniseOnDevice(jpegBase64: String): FoodFlow {
+        val guess = container.onDeviceFood.recognise(jpegBase64)
+        if (!guess.recognised) return FoodFlow.Failed(guess.note)
+
+        return FoodFlow.Reviewing(
+            MealEstimate(
+                items = guess.items.map { item ->
+                    EstimatedItem(
+                        name = item.name,
+                        portion = item.servingDescription,
+                        grams = item.grams,
+                        kcal = item.kcal,
+                        proteinG = item.proteinG,
+                        carbsG = item.carbsG,
+                        fatG = item.fatG,
+                    )
+                },
+                confidence = "low",
+                note = guess.note,
+            ),
+            EstimateSource.ON_DEVICE,
+        )
     }
 
     fun updatePortion(grams: String) {

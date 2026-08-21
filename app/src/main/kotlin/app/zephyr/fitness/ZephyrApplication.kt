@@ -7,6 +7,7 @@ import app.zephyr.fitness.coach.Notifier
 import app.zephyr.fitness.data.db.ZephyrDatabase
 import app.zephyr.fitness.data.prefs.SettingsStore
 import app.zephyr.fitness.data.food.MealPhotoAnalyser
+import app.zephyr.fitness.data.food.OnDeviceFoodRecogniser
 import app.zephyr.fitness.data.food.OpenFoodFactsClient
 import app.zephyr.fitness.data.steps.StepRepository
 import app.zephyr.fitness.domain.TodayRepository
@@ -37,6 +38,7 @@ class AppContainer(private val context: Context) {
     val updateManager: UpdateManager by lazy { UpdateManager(context) }
     val openFoodFacts: OpenFoodFactsClient by lazy { OpenFoodFactsClient() }
     val mealPhotoAnalyser: MealPhotoAnalyser by lazy { MealPhotoAnalyser() }
+    val onDeviceFood: OnDeviceFoodRecogniser by lazy { OnDeviceFoodRecogniser() }
 
     /**
      * Holds the session in progress. A process singleton, because the recording has to outlive the
