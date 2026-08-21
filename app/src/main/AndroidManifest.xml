@@ -54,6 +54,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Fetch the barcode and image-labelling models at install time rather than on first
+             use, so the camera is never waiting on a download the moment it is opened. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="barcode,ica" />
+
         <!-- Recording has to survive the screen going off and the app being backgrounded, which on
              modern Android means a foreground service or no recording at all. -->
         <service
