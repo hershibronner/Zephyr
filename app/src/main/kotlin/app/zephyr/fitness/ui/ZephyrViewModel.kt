@@ -39,6 +39,9 @@ import dev.zephyr.core.model.ActivityLevel
 import dev.zephyr.core.model.GoalPace
 import dev.zephyr.core.model.Sex
 import dev.zephyr.core.model.UserProfile
+import dev.zephyr.core.plan.AdherenceCalculator
+import dev.zephyr.core.plan.AdherenceResult
+import dev.zephyr.core.plan.CompletedSession
 import dev.zephyr.core.plan.FitnessBaseline
 import dev.zephyr.core.plan.PlannedSlot
 import dev.zephyr.core.plan.Prescription
@@ -122,6 +125,7 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         refreshPrescription()
+        refreshWeekPlan()
         checkForUpdate()
     }
 
@@ -240,6 +244,7 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
             container.settingsStore.completeOnboarding()
             refreshPrescription()
+            refreshWeekPlan()
             onDone()
         }
     }
@@ -517,6 +522,7 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
                     },
                 )
                 refreshPrescription()
+                refreshWeekPlan()
             }
             onSaved()
         }
@@ -524,6 +530,90 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     fun discardTracking() {
         container.trackingRepository.discard()
+    }
+
+    // ---- Plan -----------------------------------------------------------------------------
+
+    /** Monday of the current week; the progression engine works in whole weeks. */
+    val weekStart: LocalDate = today.with(DayOfWeek.MONDAY)
+
+    private val _weekPlan = MutableStateFlow<List<Prescription>>(emptyList())
+    val weekPlan: StateFlow<List<Prescription>> = _weekPlan.asStateFlow()
+
+    private val _isDeloadWeek = MutableStateFlow(false)
+    val isDeloadWeek: StateFlow<Boolean> = _isDeloadWeek.asStateFlow()
+
+    private val _adherence = MutableStateFlow<AdherenceResult?>(null)
+    val adherence: StateFlow<AdherenceResult?> = _adherence.asStateFlow()
+
+    /** Days this week with a session recorded, so the plan can tick them off. */
+    val completedThisWeek: StateFlow<Set<LocalDate>> = container.database.sessionDao()
+        .observeBetween(weekStart, weekStart.plusDays(6))
+        .map { sessions -> sessions.map { it.date }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    /**
+     * Rebuilds the week's prescriptions and scores adherence against what was actually done.
+     *
+     * Sessions are matched by type as well as date, so a walk does not quietly satisfy a planned
+     * run — the plan is only worth anything if it tells the truth about what was skipped.
+     */
+    private fun refreshWeekPlan() {
+        viewModelScope.launch {
+            val slots = plannedSlots()
+            if (slots.isEmpty()) {
+                _weekPlan.value = emptyList()
+                _adherence.value = null
+                return@launch
+            }
+
+            val planStart = container.planStartDate().with(DayOfWeek.MONDAY)
+            val weekIndex = ChronoUnit.WEEKS.between(planStart, weekStart).toInt().coerceAtLeast(0)
+            val longestRun = container.database.sessionDao()
+                .longestSince(ActivityType.RUN.name, today.minusDays(30))
+
+            val prescriptions = ProgressionEngine.prescriptionsForWeek(
+                template = WeeklyTemplate(slots),
+                weekStart = weekStart,
+                weekIndex = weekIndex,
+                baseline = FitnessBaseline(longestRunMetres = longestRun, longestHikeMinutes = null),
+            )
+
+            val done = container.database.sessionDao()
+                .between(weekStart, weekStart.plusDays(6))
+                .map { session ->
+                    CompletedSession(
+                        date = session.date,
+                        type = runCatching { ActivityType.valueOf(session.type) }
+                            .getOrDefault(ActivityType.OTHER),
+                    )
+                }
+
+            _weekPlan.value = prescriptions
+            _isDeloadWeek.value = prescriptions.any { it.isDeload }
+            _adherence.value = AdherenceCalculator.evaluate(prescriptions, done, today)
+        }
+    }
+
+    private suspend fun plannedSlots(): List<PlannedSlot> =
+        container.database.planDao().all()
+            .filter { it.enabled }
+            .map { entity ->
+                PlannedSlot(
+                    id = entity.id,
+                    dayOfWeek = DayOfWeek.of(entity.dayOfWeek),
+                    type = runCatching { ActivityType.valueOf(entity.type) }.getOrDefault(ActivityType.OTHER),
+                    timeOfDay = entity.timeOfDay,
+                    enabled = true,
+                )
+            }
+
+    // ---- Progress -------------------------------------------------------------------------
+
+    /** Where the current trend lands on the goal, or null when it cannot honestly be projected. */
+    fun projectedGoalDate(): LocalDate? {
+        val goal = state.value.settings.profile?.goalWeightKg ?: return null
+        return WeightTrend.projectGoalDate(state.value.trend, goal, today)
     }
 
     /** The activity chosen but not yet started — selecting is deliberately not starting. */
@@ -660,17 +750,7 @@ class ZephyrViewModel(private val container: AppContainer) : ViewModel() {
 
     private fun refreshPrescription() {
         viewModelScope.launch {
-            val slots = container.database.planDao().all()
-                .filter { it.enabled }
-                .map { entity ->
-                    PlannedSlot(
-                        id = entity.id,
-                        dayOfWeek = DayOfWeek.of(entity.dayOfWeek),
-                        type = runCatching { ActivityType.valueOf(entity.type) }.getOrDefault(ActivityType.OTHER),
-                        timeOfDay = entity.timeOfDay,
-                        enabled = true,
-                    )
-                }
+            val slots = plannedSlots()
             if (slots.isEmpty()) {
                 _prescription.value = null
                 return@launch

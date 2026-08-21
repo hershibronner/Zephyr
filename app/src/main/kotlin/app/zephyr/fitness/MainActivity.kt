@@ -84,7 +84,9 @@ import app.zephyr.fitness.ui.screens.CaptureScreen
 import app.zephyr.fitness.ui.screens.EstimateDialog
 import app.zephyr.fitness.ui.screens.FoodScreen
 import app.zephyr.fitness.ui.screens.MoveScreen
+import app.zephyr.fitness.ui.screens.PlanScreen
 import app.zephyr.fitness.ui.screens.PortionDialog
+import app.zephyr.fitness.ui.screens.ProgressScreen
 import app.zephyr.fitness.ui.screens.OnboardingScreen
 import app.zephyr.fitness.ui.screens.TodayScreen
 import app.zephyr.fitness.tracking.TrackingService
@@ -258,6 +260,10 @@ private fun Home(
     val fastingPlan by viewModel.fastingPlan.collectAsStateWithLifecycle()
     val weighInPrompt by viewModel.weighInPrompt.collectAsStateWithLifecycle()
     val weighInDraft by viewModel.weighInDraft.collectAsStateWithLifecycle()
+    val weekPlan by viewModel.weekPlan.collectAsStateWithLifecycle()
+    val completedThisWeek by viewModel.completedThisWeek.collectAsStateWithLifecycle()
+    val adherence by viewModel.adherence.collectAsStateWithLifecycle()
+    val isDeloadWeek by viewModel.isDeloadWeek.collectAsStateWithLifecycle()
     val needsInstallPermission by viewModel.needsInstallPermission.collectAsStateWithLifecycle()
 
     var tab by remember { mutableStateOf(Tab.TODAY) }
@@ -363,9 +369,27 @@ private fun Home(
                     onOpenSession = viewModel::openSessionReport,
                     modifier = Modifier.fillMaxSize(),
                 )
-                // The remaining tabs are still being ported from the prototype; the screen says so
-                // rather than presenting an empty shell as though it were finished.
-                else -> ComingSoon(current, Modifier.fillMaxSize())
+                Tab.PLAN -> PlanScreen(
+                    weekStart = viewModel.weekStart,
+                    today = today,
+                    prescriptions = weekPlan,
+                    completedDates = completedThisWeek,
+                    adherence = adherence,
+                    isDeloadWeek = isDeloadWeek,
+                    // The weekly skeleton editor is the last piece; until it exists this at least
+                    // points somewhere useful rather than doing nothing.
+                    onEditSkeleton = { tab = Tab.MOVE },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                Tab.PROGRESS -> ProgressScreen(
+                    trend = state.trend,
+                    goalWeightKg = state.settings.profile?.goalWeightKg,
+                    projectedGoalDate = viewModel.projectedGoalDate(),
+                    week = state.week,
+                    adaptive = state.adaptiveTdee,
+                    streak = state.streak,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             }
         }
@@ -604,22 +628,6 @@ private fun BottomNav(current: Tab, onSelect: (Tab) -> Unit, modifier: Modifier 
     }
 }
 
-@Composable
-private fun ComingSoon(tab: Tab, modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(40.dp),
-        ) {
-            Text(tab.label, color = Z.Ink, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
-            Text(
-                "Being ported from the web prototype next.",
-                color = Z.Muted, fontSize = 14.sp,
-            )
-        }
-    }
-}
 
 /**
  * Where the user supplies their own Anthropic API key for photo estimation.
